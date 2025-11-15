@@ -233,7 +233,7 @@ const { today, sevenDaysAgo } = useMemo(() => {
                           {habit.description}
                         </p>
                       )}
-                      <p className="text-xs text-gray-500 mt-1">
+                      <p className="text-xs text-black">
                         🔥 Streak: {stats.streak} days • {stats.completion}% last 7 days
                       </p>
                     </div>
