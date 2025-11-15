@@ -67,7 +67,7 @@ export default function LoginPage() {
             placeholder="Email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full rounded-md border border-gray-300 p-2"
+            className="w-full rounded-md border text-black p-2"
             required
           />
           <input
@@ -75,7 +75,7 @@ export default function LoginPage() {
             placeholder="Password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full rounded-md border border-gray-300 p-2"
+            className="w-full rounded-md border text-shadow-black p-2"
             required
           />
 
