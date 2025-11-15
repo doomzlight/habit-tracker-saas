@@ -164,13 +164,11 @@ const { today, sevenDaysAgo } = useMemo(() => {
   return (
     <div className="flex min-h-screen flex-col items-center bg-gray-100 p-8">
       <div className="w-full max-w-lg rounded-2xl bg-white p-8 shadow-lg border border-gray-200">
-       <div className="mb-8 flex justify-between items-center">
-        <h1 className="text-4xl font-bold text-gray-900">
-          Habit Dashboard
-          </h1>
+        <div className="mb-6 flex justify-between items-center border-b border-gray-200 pb-3">
+          <h1 className="text-3xl font-bold text-gray-800">Habit Dashboard</h1>
           <button
             onClick={handleLogout}
-            className="rounded-md bg-red-500 px-4 py-2 text-white font-medium hover:bg-red-600 transition"
+            className="rounded-md bg-red-500 px-4 py-1.5 text-sm font-semibold text-white hover:bg-red-600 transition"
           >
             Log Out
           </button>
@@ -199,7 +197,7 @@ const { today, sevenDaysAgo } = useMemo(() => {
           />
           <button
             type="submit"
-            className="w-full rounded-md bg-blue-600 text-white font-medium p-2 hover:bg-blue-700 transition"
+            className="w-full rounded-md bg-blue-600 text-white font-medium p-2 hover:bg-blue-700 active:bg-blue-800 transition"
           >
             Add Habit
           </button>
@@ -217,16 +215,15 @@ const { today, sevenDaysAgo } = useMemo(() => {
               return (
                 <li
                   key={habit.id}
-                  className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-4 shadow-sm hover:shadow-md transition"
+                  className="flex flex-col rounded-lg border border-gray-200 bg-gray-50 p-4 shadow-sm hover:shadow-md transition"
                 >
-
                   <div className="flex justify-between items-center">
                     <div>
                       <p
                         className={`font-semibold ${
                           isCompleted(habit.id)
-                            ? "line-through text-green-700"
-                            : "text-gray-800"
+                            ? "line-through text-green-600"
+                            : "text-gray-900"
                         }`}
                       >
                         {habit.name}
