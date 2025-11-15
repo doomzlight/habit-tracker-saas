@@ -183,7 +183,7 @@ const { today, sevenDaysAgo } = useMemo(() => {
             onChange={(e) =>
               setNewHabit({ ...newHabit, name: e.target.value })
             }
-            className="w-full rounded-md border border-gray-300 p-2"
+            className="w-full rounded-md border text-black"
             required
           />
           <input
@@ -193,7 +193,7 @@ const { today, sevenDaysAgo } = useMemo(() => {
             onChange={(e) =>
               setNewHabit({ ...newHabit, description: e.target.value })
             }
-            className="w-full rounded-md border border-gray-300 p-2"
+            className="w-full rounded-md border text-black p-2"
           />
           <button
             type="submit"
