@@ -223,13 +223,13 @@ const { today, sevenDaysAgo } = useMemo(() => {
                         className={`font-semibold ${
                           isCompleted(habit.id)
                             ? "line-through text-green-600"
-                            : "text-gray-900"
+                            : "text-black"
                         }`}
                       >
                         {habit.name}
                       </p>
                       {habit.description && (
-                        <p className="text-sm text-gray-600">
+                        <p className="text-sm text-black">
                           {habit.description}
                         </p>
                       )}
