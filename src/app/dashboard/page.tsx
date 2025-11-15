@@ -164,7 +164,17 @@ const { today, sevenDaysAgo } = useMemo(() => {
   return (
     <div className="flex min-h-screen flex-col items-center bg-gray-100 p-8">
       <div className="w-full max-w-lg rounded-2xl bg-white p-8 shadow-lg border border-gray-200">
-        <div className="flex justify-between items-center mb-6">
+       <div className="mb-8 flex justify-between items-center">
+        <h1 className="text-4xl font-bold text-gray-900">Habit Dashboard</h1>
+          <button
+            onClick={handleLogout}
+            className="rounded-md bg-red-500 px-4 py-2 text-white font-medium hover:bg-red-600 transition"
+          >
+            Log Out
+          </button>
+        </div>
+
+       <div className="flex justify-between items-center mb-6">
           <h1 className="text-3xl font-bold text-gray-800">
             Today&apos;s Habits
           </h1>
@@ -217,8 +227,9 @@ const { today, sevenDaysAgo } = useMemo(() => {
               return (
                 <li
                   key={habit.id}
-                  className="flex flex-col rounded-md border p-3 hover:bg-gray-50"
+                  className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-4 shadow-sm hover:shadow-md transition"
                 >
+
                   <div className="flex justify-between items-center">
                     <div>
                       <p
