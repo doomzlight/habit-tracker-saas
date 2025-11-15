@@ -10,10 +10,10 @@ export default function LoginPage() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [isSignUp, setIsSignUp] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // ✅ If already logged in, skip login page
   useEffect(() => {
     const checkSession = async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -22,24 +22,35 @@ export default function LoginPage() {
     checkSession();
   }, [router, supabase]);
 
-  // ✅ Handle login form submit
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError("");
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    try {
+      if (isSignUp) {
+        const { error } = await supabase.auth.signUp({
+          email,
+          password,
+        });
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+        if (error) throw error;
+      }
 
-    setLoading(false);
-
-    if (error) {
-      setError(error.message);
-    } else {
-      // ✅ Redirect immediately after login
       router.push("/dashboard");
+    } catch (err) {
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError("An unexpected error occurred.");
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -47,10 +58,10 @@ export default function LoginPage() {
     <div className="flex min-h-screen flex-col items-center justify-center bg-gray-100">
       <div className="w-full max-w-sm rounded-2xl bg-white p-8 shadow-lg border border-gray-200">
         <h1 className="text-2xl font-bold mb-6 text-center text-gray-800">
-          Habit Tracker Login
+          {isSignUp ? "Create Account" : "Sign In"}
         </h1>
 
-        <form onSubmit={handleLogin} className="space-y-4">
+        <form onSubmit={handleAuth} className="space-y-4">
           <input
             type="email"
             placeholder="Email"
@@ -77,9 +88,26 @@ export default function LoginPage() {
             disabled={loading}
             className="w-full rounded-md bg-blue-600 text-white font-medium p-2 hover:bg-blue-700 transition"
           >
-            {loading ? "Signing in..." : "Sign In"}
+            {loading
+              ? isSignUp
+                ? "Signing up..."
+                : "Signing in..."
+              : isSignUp
+              ? "Sign Up"
+              : "Sign In"}
           </button>
         </form>
+
+        <p className="text-sm text-gray-600 text-center mt-4">
+          {isSignUp ? "Already have an account?" : "Don’t have an account?"}{" "}
+          <button
+            type="button"
+            onClick={() => setIsSignUp(!isSignUp)}
+            className="text-blue-600 hover:underline font-medium"
+          >
+            {isSignUp ? "Sign In" : "Sign Up"}
+          </button>
+        </p>
       </div>
     </div>
   );
