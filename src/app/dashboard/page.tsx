@@ -28,10 +28,13 @@ export default function Dashboard() {
   const [logs, setLogs] = useState<HabitLog[]>([]);
   const [newHabit, setNewHabit] = useState({ name: "", description: "" });
   const [loading, setLoading] = useState(true);
+  const [completionMode, setCompletionMode] = useState<"window" | "lifetime">(
+    "window"
+  );
+  const [completionDays, setCompletionDays] = useState(7);
 
   const {
     today,
-    startOfMonth,
     daysInMonth,
     firstDayOffset,
     year,
@@ -54,7 +57,6 @@ export default function Dashboard() {
 
     return {
       today: todayDate.toISOString().slice(0, 10), // current date in YYYY-MM-DD
-      startOfMonth: start.toISOString().slice(0, 10),
       daysInMonth: end.getUTCDate(),
       // shift so Monday = 0, Sunday = 6
       firstDayOffset: (start.getUTCDay() + 6) % 7,
@@ -83,9 +85,7 @@ export default function Dashboard() {
       const { data: logsData } = await supabase
         .from("habit_logs")
         .select("*")
-        .eq("user_id", userData.user.id)
-        .gte("date", startOfMonth)
-        .lte("date", today);
+        .eq("user_id", userData.user.id);
 
       setHabits(habitsData || []);
       setLogs(logsData || []);
@@ -93,7 +93,7 @@ export default function Dashboard() {
     };
 
     loadData();
-  }, [router, supabase, startOfMonth, today]);
+  }, [router, supabase]);
 
   const addHabit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -187,18 +187,22 @@ export default function Dashboard() {
     );
   }, []);
 
+  const normalizeIso = (dateString: string) => {
+    const d = new Date(dateString);
+    return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  };
+
   const isCompleted = useCallback(
     (habitId: string) =>
       logs.some((l) => l.habit_id === habitId && l.date === today),
     [logs, today]
   );
 
-  // calculate 7-day completion and streak
+  // calculate streak and dynamic completion window
   const getHabitStats = useCallback(
-    (habitId: string) => {
-      const habitLogs = logs.filter((l) => l.habit_id === habitId);
+    (habit: Habit, windowDays: number, mode: "window" | "lifetime") => {
+      const habitLogs = logs.filter((l) => l.habit_id === habit.id);
       let streak = 0;
-      let count = 0;
       const dates = Array.from({ length: 7 }).map((_, i) => {
         const d = new Date(today);
         d.setUTCDate(d.getUTCDate() - i);
@@ -207,7 +211,6 @@ export default function Dashboard() {
 
       for (const date of dates) {
         if (habitLogs.some((l) => l.date === date && l.completed)) {
-          count++;
           streak++;
         } else {
           // streak breaks if today or any earlier day missing
@@ -216,9 +219,38 @@ export default function Dashboard() {
         }
       }
 
+      const endDate = new Date(today);
+      const startDate =
+        mode === "lifetime"
+          ? normalizeIso(habit.created_at)
+          : (() => {
+              const d = new Date(today);
+              d.setUTCDate(d.getUTCDate() - Math.max(windowDays, 1) + 1);
+              return normalizeIso(d.toISOString());
+            })();
+
+      const msInDay = 24 * 60 * 60 * 1000;
+      const totalDays =
+        Math.floor((endDate.getTime() - startDate.getTime()) / msInDay) + 1;
+
+      const completedCount = habitLogs.reduce((acc, log) => {
+        const logDate = normalizeIso(log.date);
+        if (
+          logDate.getTime() >= startDate.getTime() &&
+          logDate.getTime() <= endDate.getTime() &&
+          log.completed
+        ) {
+          return acc + 1;
+        }
+        return acc;
+      }, 0);
+
       return {
         streak,
-        completion: Math.round((count / 7) * 100),
+        completion: Math.max(
+          0,
+          Math.min(100, Math.round((completedCount / Math.max(totalDays, 1)) * 100))
+        ),
       };
     },
     [logs, today]
@@ -228,14 +260,14 @@ export default function Dashboard() {
     const total = habits.length;
     const completedToday = habits.filter((h) => isCompleted(h.id)).length;
     const completionToday = total === 0 ? 0 : Math.round((completedToday / total) * 100);
-    const streaks = habits.map((habit) => getHabitStats(habit.id).streak);
+    const streaks = habits.map((habit) => getHabitStats(habit, 7, "window").streak);
     const longestStreak = streaks.length ? Math.max(...streaks) : 0;
     const avgCompletion =
       habits.length === 0
         ? 0
         : Math.round(
             habits.reduce(
-              (sum, habit) => sum + getHabitStats(habit.id).completion,
+              (sum, habit) => sum + getHabitStats(habit, completionDays, completionMode).completion,
               0
             ) / habits.length
           );
@@ -247,7 +279,7 @@ export default function Dashboard() {
       longestStreak,
       avgCompletion,
     };
-  }, [habits, getHabitStats, isCompleted]);
+  }, [completionDays, completionMode, habits, getHabitStats, isCompleted]);
 
   if (loading) {
     return (
@@ -392,14 +424,52 @@ export default function Dashboard() {
         </div>
 
         <section className="rounded-2xl border border-white/10 bg-white/5 p-6 shadow-2xl shadow-slate-900/40 backdrop-blur">
-          <div className="mb-4 flex items-center justify-between">
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-xs uppercase tracking-wide text-slate-400">Your habits</p>
               <h2 className="text-xl font-semibold text-white">Stay on top of your routines</h2>
             </div>
-            <span className="rounded-full bg-amber-500/15 px-3 py-1 text-xs font-semibold text-amber-200">
-              {overview.completionToday}% today
-            </span>
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="rounded-full bg-amber-500/15 px-3 py-1 text-xs font-semibold text-amber-200">
+                {overview.completionToday}% today
+              </span>
+              <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-200">
+                <label className="flex items-center gap-1">
+                  <input
+                    type="radio"
+                    name="completion-mode"
+                    value="window"
+                    checked={completionMode === "window"}
+                    onChange={() => setCompletionMode("window")}
+                    className="accent-emerald-400"
+                  />
+                  <span>Last</span>
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={365}
+                  value={completionDays}
+                  onChange={(e) =>
+                    setCompletionDays(Math.max(1, Number(e.target.value) || 1))
+                  }
+                  className="h-7 w-16 rounded-md border border-white/10 bg-white/10 px-2 text-slate-100 focus:border-emerald-400 focus:outline-none"
+                  disabled={completionMode !== "window"}
+                />
+                <span>days</span>
+                <label className="flex items-center gap-1 pl-3 border-l border-white/10">
+                  <input
+                    type="radio"
+                    name="completion-mode"
+                    value="lifetime"
+                    checked={completionMode === "lifetime"}
+                    onChange={() => setCompletionMode("lifetime")}
+                    className="accent-emerald-400"
+                  />
+                  <span>Since start</span>
+                </label>
+              </div>
+            </div>
           </div>
 
           {/* Habit list */}
@@ -410,7 +480,7 @@ export default function Dashboard() {
           ) : (
             <ul className="space-y-3">
               {habits.map((habit) => {
-                const stats = getHabitStats(habit.id);
+                const stats = getHabitStats(habit, completionDays, completionMode);
                 const completedToday = isCompleted(habit.id);
                 return (
                   <li
@@ -451,7 +521,11 @@ export default function Dashboard() {
                           Streak: {stats.streak} days
                         </span>
                         <span className="rounded-full bg-white/10 px-3 py-1">
-                          Last 7 days: {stats.completion}%
+                          {completionMode === "lifetime"
+                            ? "Since start"
+                            : `Last ${completionDays} day${completionDays > 1 ? "s" : ""}`}:
+                          {" "}
+                          {stats.completion}%
                         </span>
                       </div>
                     </div>
@@ -505,3 +579,4 @@ export default function Dashboard() {
     </div>
   );
 }
+
