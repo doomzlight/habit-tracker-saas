@@ -31,17 +31,39 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
 
 
-const { today, sevenDaysAgo } = useMemo(() => {
-  const now = new Date();
-  const t = now.toISOString().slice(0, 10);
-  const s = new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000)
-    .toISOString()
-    .slice(0, 10);
-  return { today: t, sevenDaysAgo: s };
-}, []); // only runs once
+  const {
+    today,
+    startOfMonth,
+    daysInMonth,
+    firstDayOffset,
+    year,
+    month,
+    monthLabel,
+  } = useMemo(() => {
+    const now = new Date();
+    const y = now.getUTCFullYear();
+    const m = now.getUTCMonth();
+    const start = new Date(Date.UTC(y, m, 1));
+    const end = new Date(Date.UTC(y, m + 1, 0));
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      month: "long",
+      year: "numeric",
+      timeZone: "UTC",
+    });
+
+    return {
+      today: now.toISOString().slice(0, 10), // current date in YYYY-MM-DD
+      startOfMonth: start.toISOString().slice(0, 10),
+      daysInMonth: end.getUTCDate(),
+      firstDayOffset: start.getUTCDay(),
+      year: y,
+      month: m,
+      monthLabel: formatter.format(start),
+    };
+  }, []); // only runs once
 
 
-  // Load user, habits, and logs for last 7 days
+  // Load user, habits, and logs for the current month
   useEffect(() => {
     const loadData = async () => {
       const { data: userData } = await supabase.auth.getUser();
@@ -61,7 +83,7 @@ const { today, sevenDaysAgo } = useMemo(() => {
         .from("habit_logs")
         .select("*")
         .eq("user_id", userData.user.id)
-        .gte("date", sevenDaysAgo)
+        .gte("date", startOfMonth)
         .lte("date", today);
 
       setHabits(habitsData || []);
@@ -70,7 +92,7 @@ const { today, sevenDaysAgo } = useMemo(() => {
     };
 
     loadData();
-  }, [router, supabase, today, sevenDaysAgo]);
+  }, [router, supabase, startOfMonth, today]);
 
   const addHabit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -125,6 +147,27 @@ const { today, sevenDaysAgo } = useMemo(() => {
     await supabase.auth.signOut();
     router.push("/login");
   };
+
+  const monthDays = useMemo(() => {
+    const habitCount = habits.length;
+    return Array.from({ length: daysInMonth }, (_, i) => {
+      const date = new Date(year, month, i + 1);
+      const iso = date.toISOString().slice(0, 10);
+      const dayLogs = logs.filter((l) => l.date === iso && l.completed);
+      const completeAll =
+        habitCount > 0 &&
+        habits.every((h) => dayLogs.some((l) => l.habit_id === h.id));
+
+      return {
+        label: i + 1,
+        iso,
+        completeAll,
+        isToday: iso === today,
+      };
+    });
+  }, [daysInMonth, habits, logs, month, today, year]);
+
+  const weekdayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
   if (loading) {
     return <p className="text-center mt-10 text-gray-500">Loading...</p>;
@@ -202,6 +245,44 @@ const { today, sevenDaysAgo } = useMemo(() => {
             Add Habit
           </button>
         </form>
+
+        {/* Calendar */}
+        <div className="mb-8">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-semibold text-gray-800">
+              Monthly completion
+            </h2>
+            <span className="text-sm text-gray-500">{monthLabel}</span>
+          </div>
+          <p className="text-xs text-gray-500 mt-1">
+            Green days = all habits completed
+          </p>
+          <div className="mt-3 grid grid-cols-7 gap-2 text-sm">
+            {weekdayLabels.map((day) => (
+              <div
+                key={day}
+                className="text-center text-gray-500 font-semibold uppercase tracking-wide"
+              >
+                {day}
+              </div>
+            ))}
+            {Array.from({ length: firstDayOffset }).map((_, idx) => (
+              <div key={`blank-${idx}`} />
+            ))}
+            {monthDays.map((day) => (
+              <div
+                key={day.iso}
+                className={`flex h-12 flex-col items-center justify-center rounded-md border text-sm font-semibold ${
+                  day.completeAll
+                    ? "bg-green-100 border-green-500 text-green-800"
+                    : "bg-gray-50 border-gray-200 text-gray-800"
+                } ${day.isToday ? "ring-2 ring-blue-400" : ""}`}
+              >
+                {day.label}
+              </div>
+            ))}
+          </div>
+        </div>
 
         {/* Habit list */}
         {habits.length === 0 ? (
