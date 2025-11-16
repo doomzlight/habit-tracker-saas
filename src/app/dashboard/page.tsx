@@ -55,7 +55,8 @@ export default function Dashboard() {
       today: now.toISOString().slice(0, 10), // current date in YYYY-MM-DD
       startOfMonth: start.toISOString().slice(0, 10),
       daysInMonth: end.getUTCDate(),
-      firstDayOffset: start.getUTCDay(),
+      // shift so Monday = 0, Sunday = 6
+      firstDayOffset: (start.getUTCDay() + 6) % 7,
       year: y,
       month: m,
       monthLabel: formatter.format(start),
@@ -151,12 +152,13 @@ export default function Dashboard() {
   const monthDays = useMemo(() => {
     const habitCount = habits.length;
     return Array.from({ length: daysInMonth }, (_, i) => {
-      const date = new Date(year, month, i + 1);
+      const date = new Date(Date.UTC(year, month, i + 1));
       const iso = date.toISOString().slice(0, 10);
-      const dayLogs = logs.filter((l) => l.date === iso && l.completed);
       const completeAll =
         habitCount > 0 &&
-        habits.every((h) => dayLogs.some((l) => l.habit_id === h.id));
+        habits.every((h) =>
+          logs.some((l) => l.habit_id === h.id && l.date === iso && l.completed)
+        );
 
       return {
         label: i + 1,
@@ -165,7 +167,14 @@ export default function Dashboard() {
         isToday: iso === today,
       };
     });
-  }, [daysInMonth, habits, logs, month, today, year]);
+  }, [
+    daysInMonth,
+    habits,
+    logs,
+    month,
+    today,
+    year,
+  ]);
 
   const weekdayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
