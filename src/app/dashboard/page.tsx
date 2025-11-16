@@ -28,10 +28,9 @@ export default function Dashboard() {
   const [logs, setLogs] = useState<HabitLog[]>([]);
   const [newHabit, setNewHabit] = useState({ name: "", description: "" });
   const [loading, setLoading] = useState(true);
-  const [completionMode, setCompletionMode] = useState<"window" | "lifetime">(
-    "window"
-  );
-  const [completionDays, setCompletionDays] = useState(7);
+  const [completionSettings, setCompletionSettings] = useState<
+    Record<string, { mode: "window" | "lifetime"; days: number }>
+  >({});
 
   const {
     today,
@@ -256,6 +255,12 @@ export default function Dashboard() {
     [logs, today]
   );
 
+  const getCompletionSetting = useCallback(
+    (habitId: string) =>
+      completionSettings[habitId] || { mode: "window", days: 7 },
+    [completionSettings]
+  );
+
   const overview = useMemo(() => {
     const total = habits.length;
     const completedToday = habits.filter((h) => isCompleted(h.id)).length;
@@ -267,7 +272,7 @@ export default function Dashboard() {
         ? 0
         : Math.round(
             habits.reduce(
-              (sum, habit) => sum + getHabitStats(habit, completionDays, completionMode).completion,
+              (sum, habit) => sum + getHabitStats(habit, 7, "window").completion,
               0
             ) / habits.length
           );
@@ -279,7 +284,7 @@ export default function Dashboard() {
       longestStreak,
       avgCompletion,
     };
-  }, [completionDays, completionMode, habits, getHabitStats, isCompleted]);
+  }, [habits, getHabitStats, isCompleted]);
 
   if (loading) {
     return (
@@ -429,47 +434,9 @@ export default function Dashboard() {
               <p className="text-xs uppercase tracking-wide text-slate-400">Your habits</p>
               <h2 className="text-xl font-semibold text-white">Stay on top of your routines</h2>
             </div>
-            <div className="flex flex-wrap items-center gap-3">
-              <span className="rounded-full bg-amber-500/15 px-3 py-1 text-xs font-semibold text-amber-200">
-                {overview.completionToday}% today
-              </span>
-              <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-200">
-                <label className="flex items-center gap-1">
-                  <input
-                    type="radio"
-                    name="completion-mode"
-                    value="window"
-                    checked={completionMode === "window"}
-                    onChange={() => setCompletionMode("window")}
-                    className="accent-emerald-400"
-                  />
-                  <span>Last</span>
-                </label>
-                <input
-                  type="number"
-                  min={1}
-                  max={365}
-                  value={completionDays}
-                  onChange={(e) =>
-                    setCompletionDays(Math.max(1, Number(e.target.value) || 1))
-                  }
-                  className="h-7 w-16 rounded-md border border-white/10 bg-white/10 px-2 text-slate-100 focus:border-emerald-400 focus:outline-none"
-                  disabled={completionMode !== "window"}
-                />
-                <span>days</span>
-                <label className="flex items-center gap-1 pl-3 border-l border-white/10">
-                  <input
-                    type="radio"
-                    name="completion-mode"
-                    value="lifetime"
-                    checked={completionMode === "lifetime"}
-                    onChange={() => setCompletionMode("lifetime")}
-                    className="accent-emerald-400"
-                  />
-                  <span>Since start</span>
-                </label>
-              </div>
-            </div>
+            <span className="rounded-full bg-amber-500/15 px-3 py-1 text-xs font-semibold text-amber-200">
+              {overview.completionToday}% today
+            </span>
           </div>
 
           {/* Habit list */}
@@ -480,7 +447,8 @@ export default function Dashboard() {
           ) : (
             <ul className="space-y-3">
               {habits.map((habit) => {
-                const stats = getHabitStats(habit, completionDays, completionMode);
+                const settings = getCompletionSetting(habit.id);
+                const stats = getHabitStats(habit, settings.days, settings.mode);
                 const completedToday = isCompleted(habit.id);
                 return (
                   <li
@@ -516,16 +484,76 @@ export default function Dashboard() {
                         )}
                       </div>
 
-                      <div className="flex flex-col items-end gap-1 text-xs font-semibold text-slate-200">
+                      <div className="flex flex-col items-end gap-2 text-xs font-semibold text-slate-200">
                         <span className="rounded-full bg-white/10 px-3 py-1">
                           Streak: {stats.streak} days
                         </span>
+                        <div className="flex flex-wrap items-center gap-2 rounded-full bg-white/5 px-2 py-1 text-[11px]">
+                          <label className="flex items-center gap-1">
+                            <input
+                              type="radio"
+                              name={`completion-mode-${habit.id}`}
+                              value="window"
+                              checked={settings.mode === "window"}
+                              onChange={() =>
+                                setCompletionSettings((prev) => ({
+                                  ...prev,
+                                  [habit.id]: {
+                                    mode: "window",
+                                    days: settings.days || 7,
+                                  },
+                                }))
+                              }
+                              className="accent-emerald-400"
+                            />
+                            <span>Last</span>
+                          </label>
+                          <input
+                            type="number"
+                            min={1}
+                            max={365}
+                            value={settings.days}
+                            onChange={(e) =>
+                              setCompletionSettings((prev) => ({
+                                ...prev,
+                                [habit.id]: {
+                                  mode: "window",
+                                  days: Math.max(
+                                    1,
+                                    Number(e.target.value) || settings.days || 1
+                                  ),
+                                },
+                              }))
+                            }
+                            className="h-7 w-16 rounded-md border border-white/10 bg-white/10 px-2 text-slate-100 focus:border-emerald-400 focus:outline-none disabled:opacity-50"
+                            disabled={settings.mode !== "window"}
+                          />
+                          <span>days</span>
+                          <label className="flex items-center gap-1 pl-2 border-l border-white/10">
+                            <input
+                              type="radio"
+                              name={`completion-mode-${habit.id}`}
+                              value="lifetime"
+                              checked={settings.mode === "lifetime"}
+                              onChange={() =>
+                                setCompletionSettings((prev) => ({
+                                  ...prev,
+                                  [habit.id]: {
+                                    mode: "lifetime",
+                                    days: settings.days || 7,
+                                  },
+                                }))
+                              }
+                              className="accent-emerald-400"
+                            />
+                            <span>Since start</span>
+                          </label>
+                        </div>
                         <span className="rounded-full bg-white/10 px-3 py-1">
-                          {completionMode === "lifetime"
+                          {settings.mode === "lifetime"
                             ? "Since start"
-                            : `Last ${completionDays} day${completionDays > 1 ? "s" : ""}`}:
-                          {" "}
-                          {stats.completion}%
+                            : `Last ${settings.days} day${settings.days > 1 ? "s" : ""}`}{" "}
+                          • {stats.completion}%
                         </span>
                       </div>
                     </div>
