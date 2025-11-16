@@ -46,7 +46,7 @@ export default function DashboardPage() {
   return (
     <main className="min-h-screen bg-linear-to-br from-slate-900 via-slate-950 to-slate-900 text-white flex items-center justify-center px-4">
       <div className="relative w-full max-w-3xl">
-        <div className="absolute inset-0 rounded-3xl bg-gradient-to-r from-blue-500/40 via-purple-500/40 to-cyan-500/40 blur-3xl" />
+        <div className="absolute inset-0 rounded-3xl bg-linear-to-r from-blue-500/40 via-purple-500/40 to-cyan-500/40 blur-3xl" />
         <div className="relative rounded-3xl bg-slate-900/70 backdrop-blur-lg border border-white/10 shadow-2xl p-10">
           <div className="flex flex-col gap-4">
             <p className="text-sm uppercase tracking-[0.3em] text-slate-300/70">Dashboard</p>
@@ -55,7 +55,7 @@ export default function DashboardPage() {
                 <span className="text-slate-200">Loading your space...</span>
               ) : (
                 <>
-                  Hey, <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 via-blue-300 to-purple-300">{greetingName}</span>
+                  Hey, <span className="text-transparent bg-clip-text bg-linear-to-r from-cyan-300 via-blue-300 to-purple-300">{greetingName}</span>
                 </>
               )}
             </h1>
@@ -74,7 +74,7 @@ export default function DashboardPage() {
           <div className="mt-8 grid gap-4 md:grid-cols-3">
             <div className="col-span-2 rounded-2xl border border-white/10 bg-white/5 p-6">
               <p className="text-sm text-slate-300 mb-2">Streak</p>
-              <div className="text-3xl font-semibold">—</div>
+              <div className="text-3xl font-semibold">ï¿½</div>
               <p className="text-slate-400 mt-2 text-sm">
                 Hook your data up to see your streaks here.
               </p>
