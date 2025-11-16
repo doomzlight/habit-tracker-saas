@@ -311,59 +311,59 @@ export default function Dashboard() {
           <ul className="space-y-3">
             {habits.map((habit) => {
               const stats = getHabitStats(habit.id);
+              const completedToday = isCompleted(habit.id);
               return (
                 <li
                   key={habit.id}
-                  className="flex flex-col rounded-lg border border-gray-200 bg-gray-50 p-4 shadow-sm hover:shadow-md transition"
+                  className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-5 shadow-sm hover:shadow-md transition"
                 >
-                  <div className="flex justify-between items-center">
+                  <div className="flex items-center justify-between">
                     <div>
-                      <p
-                        className={`font-semibold ${
-                          isCompleted(habit.id)
+                      <h3
+                        className={`font-semibold text-lg ${
+                          completedToday
                             ? "line-through text-green-600"
-                            : "text-black"
+                            : "text-gray-900"
                         }`}
                       >
                         {habit.name}
-                      </p>
+                      </h3>
                       {habit.description && (
-                        <p className="text-sm text-black">
+                        <p className="text-sm text-gray-600">
                           {habit.description}
                         </p>
                       )}
-                      <p className="text-xs text-black">
-                      Streak: {stats.streak} days | {stats.completion}% last 7 days
+                      <p className="text-xs text-gray-500">
+                        Streak: {stats.streak} days | {stats.completion}% last 7 days
                       </p>
                     </div>
 
                     <div className="flex items-center gap-2">
                       <button
-                        type="button"
                         onClick={() => toggleHabit(habit.id)}
                         className={`px-3 py-1 rounded-md text-white text-sm font-medium transition ${
-                          isCompleted(habit.id)
+                          completedToday
                             ? "bg-green-500 hover:bg-green-600"
-                            : "bg-gray-400 hover:bg-gray-500"
+                            : "bg-blue-500 hover:bg-blue-600"
                         }`}
                       >
-                        {isCompleted(habit.id) ? "Done" : "Mark"}
+                        {completedToday ? "Done" : "Mark Done"}
                       </button>
 
                       <button
-                        type="button"
                         onClick={() => deleteHabit(habit.id)}
-                        className="text-sm text-red-500 hover:underline"
+                        className="text-red-500 hover:text-red-600 text-sm font-medium"
                       >
                         Delete
                       </button>
                     </div>
                   </div>
 
+
                   {/* Progress bar */}
-                  <div className="mt-3 h-2 w-full bg-gray-200 rounded-full overflow-hidden">
+                  <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
                     <div
-                      className="h-2 bg-green-500"
+                      className="h-2 bg-green-500 rounded-full transition-all duration-500"
                       style={{ width: `${stats.completion}%` }}
                     ></div>
                   </div>
@@ -376,3 +376,4 @@ export default function Dashboard() {
     </div>
   );
 }
+
