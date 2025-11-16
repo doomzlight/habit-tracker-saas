@@ -176,7 +176,16 @@ export default function Dashboard() {
     year,
   ]);
 
-  const weekdayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const weekdayLabels = useMemo(() => {
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      weekday: "short",
+      timeZone: "UTC",
+    });
+    const monday = new Date(Date.UTC(2023, 0, 2)); // Monday anchor
+    return Array.from({ length: 7 }, (_, i) =>
+      formatter.format(new Date(monday.getTime() + i * 24 * 60 * 60 * 1000))
+    );
+  }, []);
 
   if (loading) {
     return <p className="text-center mt-10 text-gray-500">Loading...</p>;
