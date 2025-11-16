@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { User } from "@supabase/supabase-js";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 type Habit = {
   id: string;
@@ -187,222 +187,321 @@ export default function Dashboard() {
     );
   }, []);
 
-  if (loading) {
-    return <p className="text-center mt-10 text-gray-500">Loading...</p>;
-  }
-
-  const isCompleted = (habitId: string) =>
-    logs.some((l) => l.habit_id === habitId && l.date === today);
+  const isCompleted = useCallback(
+    (habitId: string) =>
+      logs.some((l) => l.habit_id === habitId && l.date === today),
+    [logs, today]
+  );
 
   // calculate 7-day completion and streak
-  const getHabitStats = (habitId: string) => {
-    const habitLogs = logs.filter((l) => l.habit_id === habitId);
-    let streak = 0;
-    let count = 0;
-    const dates = Array.from({ length: 7 }).map((_, i) => {
-      const d = new Date(today);
-      d.setUTCDate(d.getUTCDate() - i);
-      return d.toISOString().slice(0, 10);
-    });
+  const getHabitStats = useCallback(
+    (habitId: string) => {
+      const habitLogs = logs.filter((l) => l.habit_id === habitId);
+      let streak = 0;
+      let count = 0;
+      const dates = Array.from({ length: 7 }).map((_, i) => {
+        const d = new Date(today);
+        d.setUTCDate(d.getUTCDate() - i);
+        return d.toISOString().slice(0, 10);
+      });
 
-    for (const date of dates) {
-      if (habitLogs.some((l) => l.date === date && l.completed)) {
-        count++;
-        streak++;
-      } else {
-        // streak breaks if today or any earlier day missing
-        if (date === today) continue;
-        if (streak > 0) break;
+      for (const date of dates) {
+        if (habitLogs.some((l) => l.date === date && l.completed)) {
+          count++;
+          streak++;
+        } else {
+          // streak breaks if today or any earlier day missing
+          if (date === today) continue;
+          if (streak > 0) break;
+        }
       }
-    }
+
+      return {
+        streak,
+        completion: Math.round((count / 7) * 100),
+      };
+    },
+    [logs, today]
+  );
+
+  const overview = useMemo(() => {
+    const total = habits.length;
+    const completedToday = habits.filter((h) => isCompleted(h.id)).length;
+    const completionToday = total === 0 ? 0 : Math.round((completedToday / total) * 100);
+    const streaks = habits.map((habit) => getHabitStats(habit.id).streak);
+    const longestStreak = streaks.length ? Math.max(...streaks) : 0;
+    const avgCompletion =
+      habits.length === 0
+        ? 0
+        : Math.round(
+            habits.reduce(
+              (sum, habit) => sum + getHabitStats(habit.id).completion,
+              0
+            ) / habits.length
+          );
 
     return {
-      streak,
-      completion: Math.round((count / 7) * 100),
+      total,
+      completedToday,
+      completionToday,
+      longestStreak,
+      avgCompletion,
     };
-  };
+  }, [habits, getHabitStats, isCompleted]);
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-950 text-slate-200">
+        <p className="text-sm font-medium">Loading your dashboard...</p>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex min-h-screen flex-col items-center bg-gray-100 p-8">
-      <div className="w-full max-w-lg rounded-2xl bg-white p-8 shadow-lg border border-gray-200">
-        <div className="mb-6 flex justify-between items-center border-b border-gray-200 pb-3">
-          <h1 className="text-3xl font-bold text-gray-800">Habit Dashboard</h1>
-          <button
-            onClick={handleLogout}
-            className="rounded-md bg-red-500 px-4 py-1.5 text-sm font-semibold text-white hover:bg-red-600 transition"
-          >
-            Log Out
-          </button>
-        </div>
-
-        {/* Add habit form */}
-        <form onSubmit={addHabit} className="mb-6 space-y-3">
-          <input
-            type="text"
-            placeholder="Habit name"
-            value={newHabit.name}
-            onChange={(e) =>
-              setNewHabit({ ...newHabit, name: e.target.value })
-            }
-            className="w-full rounded-md border text-black p-2"
-            required
-          />
-          <input
-            type="text"
-            placeholder="Description (optional)"
-            value={newHabit.description}
-            onChange={(e) =>
-              setNewHabit({ ...newHabit, description: e.target.value })
-            }
-            className="w-full rounded-md border text-black p-2"
-          />
-          <button
-            type="submit"
-            className="w-full rounded-md bg-blue-600 text-white font-medium p-2 hover:bg-blue-700 active:bg-blue-800 transition"
-          >
-            Add Habit
-          </button>
-        </form>
-
-        {/* Calendar */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-gray-800">
-              Monthly completion
-            </h2>
-            <span className="text-sm text-gray-500">{monthLabel}</span>
+    <div className="min-h-screen bg-linear-to-br from-slate-900 via-slate-950 to-slate-900 text-slate-100">
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-4 py-10">
+        <header className="rounded-2xl border border-white/10 bg-white/5 p-6 shadow-2xl shadow-slate-900/40 backdrop-blur">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm uppercase tracking-[0.2em] text-slate-400">Daily Focus</p>
+              <h1 className="text-3xl font-bold tracking-tight text-white">Habit Dashboard</h1>
+              <p className="text-sm text-slate-300">
+                Track, plan, and celebrate the small wins that build momentum.
+              </p>
+            </div>
+            <button
+              onClick={handleLogout}
+              className="inline-flex items-center justify-center rounded-full bg-red-500 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-red-500/30 transition hover:-translate-y-0.5 hover:bg-red-400"
+            >
+              Log Out
+            </button>
           </div>
-          <p className="text-xs text-gray-500 mt-1">
-            Green days = all habits completed
-          </p>
-          <div className="mt-3 grid grid-cols-7 gap-2 text-sm">
-            {weekdayLabels.map((day) => (
-              <div
-                key={day}
-                className="text-center text-gray-500 font-semibold uppercase tracking-wide"
-              >
-                {day}
-              </div>
-            ))}
-            {Array.from({ length: firstDayOffset }).map((_, idx) => (
-              <div key={`blank-${idx}`} />
-            ))}
-            {monthDays.map((day) => (
-              <div
-                key={day.iso}
-                className={`flex h-12 flex-col items-center justify-center rounded-md border text-sm font-semibold ${
-                  day.completeAll
-                    ? "bg-green-100 border-green-500 text-green-800"
-                    : "bg-gray-50 border-gray-200 text-gray-800"
-                } ${day.isToday ? "ring-2 ring-blue-400" : ""}`}
-              >
-                {day.label}
-              </div>
-            ))}
-          </div>
-        </div>
 
-        {/* Habit list */}
-        {habits.length === 0 ? (
-          <p className="text-center text-gray-500">
-            No habits yet. Add one above!
-          </p>
-        ) : (
-          <ul className="space-y-3">
-            {habits.map((habit) => {
-              const stats = getHabitStats(habit.id);
-              const completedToday = isCompleted(habit.id);
-              return (
-                <li
-                  key={habit.id}
-                  className="flex flex-col gap-4 rounded-xl border border-gray-200 bg-linear-to-r from-white via-slate-50 to-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+          <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded-xl border border-white/10 bg-white/5 p-4 shadow-sm">
+              <p className="text-xs uppercase tracking-wide text-slate-400">Active habits</p>
+              <p className="text-2xl font-semibold text-white">{overview.total}</p>
+              <p className="text-xs text-slate-400">{overview.completedToday} logged today</p>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-white/5 p-4 shadow-sm">
+              <p className="text-xs uppercase tracking-wide text-slate-400">Today completion</p>
+              <p className="text-2xl font-semibold text-white">{overview.completionToday}%</p>
+              <div className="mt-2 h-1.5 w-full rounded-full bg-white/10">
+                <div
+                  className="h-1.5 rounded-full bg-emerald-400"
+                  style={{ width: `${overview.completionToday}%` }}
+                />
+              </div>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-white/5 p-4 shadow-sm">
+              <p className="text-xs uppercase tracking-wide text-slate-400">Longest streak</p>
+              <p className="text-2xl font-semibold text-white">{overview.longestStreak}d</p>
+              <p className="text-xs text-slate-400">Keep the chain growing</p>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-white/5 p-4 shadow-sm">
+              <p className="text-xs uppercase tracking-wide text-slate-400">Avg last 7 days</p>
+              <p className="text-2xl font-semibold text-white">{overview.avgCompletion}%</p>
+              <p className="text-xs text-slate-400">Across all habits</p>
+            </div>
+          </div>
+        </header>
+
+        <div className="grid gap-6 lg:grid-cols-[1.05fr_1.35fr]">
+          <section className="rounded-2xl border border-white/10 bg-white/5 p-6 shadow-xl shadow-slate-900/40 backdrop-blur">
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <p className="text-xs uppercase tracking-wide text-slate-400">Create a habit</p>
+                <h2 className="text-xl font-semibold text-white">Add a new routine</h2>
+              </div>
+              <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-300">
+                Consistency is king
+              </span>
+            </div>
+            <form onSubmit={addHabit} className="space-y-3">
+              <input
+                type="text"
+                placeholder="Habit name"
+                value={newHabit.name}
+                onChange={(e) =>
+                  setNewHabit({ ...newHabit, name: e.target.value })
+                }
+                className="w-full rounded-lg border border-white/10 bg-white/10 p-3 text-sm text-white placeholder:text-slate-400 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
+                required
+              />
+              <input
+                type="text"
+                placeholder="Description (optional)"
+                value={newHabit.description}
+                onChange={(e) =>
+                  setNewHabit({ ...newHabit, description: e.target.value })
+                }
+                className="w-full rounded-lg border border-white/10 bg-white/10 p-3 text-sm text-white placeholder:text-slate-400 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
+              />
+              <button
+                type="submit"
+                className="w-full rounded-lg bg-emerald-500 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-500/30 transition hover:-translate-y-0.5 hover:bg-emerald-400"
+              >
+                Add Habit
+              </button>
+            </form>
+          </section>
+
+          <section className="rounded-2xl border border-white/10 bg-white/5 p-6 shadow-xl shadow-slate-900/40 backdrop-blur">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs uppercase tracking-wide text-slate-400">Progress at a glance</p>
+                <h2 className="text-xl font-semibold text-white">Monthly completion</h2>
+              </div>
+              <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-semibold text-slate-200">
+                {monthLabel}
+              </span>
+            </div>
+            <p className="mt-1 text-xs text-slate-400">
+              Green days mean every habit was completed.
+            </p>
+            <div className="mt-4 grid grid-cols-7 gap-2 text-sm">
+              {weekdayLabels.map((day) => (
+                <div
+                  key={day}
+                  className="text-center text-slate-300 font-semibold uppercase tracking-wide"
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <h3
-                          className={`font-semibold text-lg ${
-                            completedToday
-                              ? "line-through text-green-600"
-                              : "text-gray-900"
-                          }`}
-                        >
-                          {habit.name}
-                        </h3>
-                        <span
-                          className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                            completedToday
-                              ? "bg-green-100 text-green-700 border border-green-200"
-                              : "bg-blue-50 text-blue-700 border border-blue-200"
-                          }`}
-                        >
-                          {completedToday ? "Done today" : "Pending"}
+                  {day}
+                </div>
+              ))}
+              {Array.from({ length: firstDayOffset }).map((_, idx) => (
+                <div key={`blank-${idx}`} />
+              ))}
+              {monthDays.map((day) => (
+                <div
+                  key={day.iso}
+                  className={`flex h-12 flex-col items-center justify-center rounded-lg border text-sm font-semibold ${
+                    day.completeAll
+                      ? "border-emerald-400/70 bg-emerald-500/15 text-emerald-200"
+                      : "border-white/10 bg-white/5 text-slate-100"
+                  } ${
+                    day.isToday
+                      ? "ring-2 ring-emerald-400 ring-offset-2 ring-offset-slate-900"
+                      : ""
+                  }`}
+                >
+                  {day.label}
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>
+
+        <section className="rounded-2xl border border-white/10 bg-white/5 p-6 shadow-2xl shadow-slate-900/40 backdrop-blur">
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-wide text-slate-400">Your habits</p>
+              <h2 className="text-xl font-semibold text-white">Stay on top of your routines</h2>
+            </div>
+            <span className="rounded-full bg-amber-500/15 px-3 py-1 text-xs font-semibold text-amber-200">
+              {overview.completionToday}% today
+            </span>
+          </div>
+
+          {/* Habit list */}
+          {habits.length === 0 ? (
+            <p className="text-center text-slate-300">
+              No habits yet. Add one above!
+            </p>
+          ) : (
+            <ul className="space-y-3">
+              {habits.map((habit) => {
+                const stats = getHabitStats(habit.id);
+                const completedToday = isCompleted(habit.id);
+                return (
+                  <li
+                    key={habit.id}
+                    className="flex flex-col gap-4 rounded-xl border border-white/10 bg-linear-to-r from-white/5 via-white/10 to-white/5 p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg hover:shadow-emerald-500/10"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <h3
+                            className={`font-semibold text-lg ${
+                              completedToday
+                                ? "line-through text-emerald-300"
+                                : "text-white"
+                            }`}
+                          >
+                            {habit.name}
+                          </h3>
+                          <span
+                            className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                              completedToday
+                                ? "bg-emerald-500/15 text-emerald-200 border border-emerald-300/30"
+                                : "bg-sky-500/15 text-sky-200 border border-sky-300/30"
+                            }`}
+                          >
+                            {completedToday ? "Done today" : "Pending"}
+                          </span>
+                        </div>
+                        {habit.description && (
+                          <p className="text-sm text-slate-200">
+                            {habit.description}
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="flex flex-col items-end gap-1 text-xs font-semibold text-slate-200">
+                        <span className="rounded-full bg-white/10 px-3 py-1">
+                          Streak: {stats.streak} days
+                        </span>
+                        <span className="rounded-full bg-white/10 px-3 py-1">
+                          Last 7 days: {stats.completion}%
                         </span>
                       </div>
-                      {habit.description && (
-                        <p className="text-sm text-gray-600">
-                          {habit.description}
-                        </p>
-                      )}
                     </div>
 
-                    <div className="flex flex-col items-end gap-1 text-xs font-semibold text-gray-600">
-                      <span className="rounded-full bg-gray-100 px-3 py-1">
-                        Streak: {stats.streak} days
-                      </span>
-                      <span className="rounded-full bg-gray-100 px-3 py-1">
-                        Last 7 days: {stats.completion}%
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
+                        <div
+                          className="h-2 bg-linear-to-r from-emerald-400 to-emerald-500 rounded-full transition-all duration-500"
+                          style={{ width: `${stats.completion}%` }}
+                        ></div>
+                      </div>
+                      <span className="min-w-12 text-right text-xs font-semibold text-slate-200">
+                        {stats.completion}%
                       </span>
                     </div>
-                  </div>
 
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
-                      <div
-                        className="h-2 bg-linear-to-r from-green-400 to-green-600 rounded-full transition-all duration-500"
-                        style={{ width: `${stats.completion}%` }}
-                      ></div>
-                    </div>
-                    <span className="min-w-12 text-right text-xs font-semibold text-gray-600">
-                      {stats.completion}%
-                    </span>
-                  </div>
+                    <div className="flex items-center justify-between border-t border-white/10 pt-3">
+                      <div className="flex items-center gap-2 text-xs text-slate-300">
+                        <span className="h-2 w-2 rounded-full bg-emerald-400"></span>
+                        {completedToday
+                          ? "Nice work! Logged for today."
+                          : "Log today to keep the streak going."}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => toggleHabit(habit.id)}
+                          className={`px-3 py-1 rounded-md text-white text-sm font-medium transition ${
+                            completedToday
+                              ? "bg-emerald-500 hover:bg-emerald-400"
+                              : "bg-sky-500 hover:bg-sky-400"
+                          }`}
+                        >
+                          {completedToday ? "Unmark" : "Mark done"}
+                        </button>
 
-                  <div className="flex items-center justify-between border-t border-gray-100 pt-3">
-                    <div className="flex items-center gap-2 text-xs text-gray-500">
-                      <span className="h-2 w-2 rounded-full bg-green-500"></span>
-                      {completedToday
-                        ? "Nice work! Logged for today."
-                        : "Log today to keep the streak going."}
+                        <button
+                          onClick={() => deleteHabit(habit.id)}
+                          className="text-sm font-medium text-red-300 hover:text-red-200"
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => toggleHabit(habit.id)}
-                        className={`px-3 py-1 rounded-md text-white text-sm font-medium transition ${
-                          completedToday
-                            ? "bg-green-500 hover:bg-green-600"
-                            : "bg-blue-500 hover:bg-blue-600"
-                        }`}
-                      >
-                        {completedToday ? "Unmark" : "Mark done"}
-                      </button>
-
-                      <button
-                        onClick={() => deleteHabit(habit.id)}
-                        className="text-red-500 hover:text-red-600 text-sm font-medium"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
       </div>
     </div>
   );
 }
-
-
