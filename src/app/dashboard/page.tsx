@@ -315,29 +315,66 @@ export default function Dashboard() {
               return (
                 <li
                   key={habit.id}
-                  className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-5 shadow-sm hover:shadow-md transition"
+                  className="flex flex-col gap-4 rounded-xl border border-gray-200 bg-linear-to-r from-white via-slate-50 to-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
                 >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3
-                        className={`font-semibold text-lg ${
-                          completedToday
-                            ? "line-through text-green-600"
-                            : "text-gray-900"
-                        }`}
-                      >
-                        {habit.name}
-                      </h3>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <h3
+                          className={`font-semibold text-lg ${
+                            completedToday
+                              ? "line-through text-green-600"
+                              : "text-gray-900"
+                          }`}
+                        >
+                          {habit.name}
+                        </h3>
+                        <span
+                          className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                            completedToday
+                              ? "bg-green-100 text-green-700 border border-green-200"
+                              : "bg-blue-50 text-blue-700 border border-blue-200"
+                          }`}
+                        >
+                          {completedToday ? "Done today" : "Pending"}
+                        </span>
+                      </div>
                       {habit.description && (
                         <p className="text-sm text-gray-600">
                           {habit.description}
                         </p>
                       )}
-                      <p className="text-xs text-gray-500">
-                        Streak: {stats.streak} days | {stats.completion}% last 7 days
-                      </p>
                     </div>
 
+                    <div className="flex flex-col items-end gap-1 text-xs font-semibold text-gray-600">
+                      <span className="rounded-full bg-gray-100 px-3 py-1">
+                        Streak: {stats.streak} days
+                      </span>
+                      <span className="rounded-full bg-gray-100 px-3 py-1">
+                        Last 7 days: {stats.completion}%
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                      <div
+                        className="h-2 bg-linear-to-r from-green-400 to-green-600 rounded-full transition-all duration-500"
+                        style={{ width: `${stats.completion}%` }}
+                      ></div>
+                    </div>
+                    <span className="min-w-12 text-right text-xs font-semibold text-gray-600">
+                      {stats.completion}%
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between border-t border-gray-100 pt-3">
+                    <div className="flex items-center gap-2 text-xs text-gray-500">
+                      <span className="h-2 w-2 rounded-full bg-green-500"></span>
+                      {completedToday
+                        ? "Nice work! Logged for today."
+                        : "Log today to keep the streak going."}
+                    </div>
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => toggleHabit(habit.id)}
@@ -347,7 +384,7 @@ export default function Dashboard() {
                             : "bg-blue-500 hover:bg-blue-600"
                         }`}
                       >
-                        {completedToday ? "Done" : "Mark Done"}
+                        {completedToday ? "Unmark" : "Mark done"}
                       </button>
 
                       <button
@@ -358,15 +395,6 @@ export default function Dashboard() {
                       </button>
                     </div>
                   </div>
-
-
-                  {/* Progress bar */}
-                  <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
-                    <div
-                      className="h-2 bg-green-500 rounded-full transition-all duration-500"
-                      style={{ width: `${stats.completion}%` }}
-                    ></div>
-                  </div>
                 </li>
               );
             })}
@@ -376,4 +404,5 @@ export default function Dashboard() {
     </div>
   );
 }
+
 
