@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
@@ -8,6 +8,8 @@ export default function LoginPage() {
   const router = useRouter();
   const supabase = createClientComponentClient();
 
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isSignUp, setIsSignUp] = useState(false);
@@ -16,13 +18,15 @@ export default function LoginPage() {
 
   useEffect(() => {
     const checkSession = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (user) router.push("/dashboard");
     };
     checkSession();
   }, [router, supabase]);
 
-  const handleAuth = async (e: React.FormEvent) => {
+  const handleAuth = async (e: FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError("");
@@ -32,6 +36,12 @@ export default function LoginPage() {
         const { error } = await supabase.auth.signUp({
           email,
           password,
+          options: {
+            data: {
+              first_name: firstName.trim(),
+              last_name: lastName.trim(),
+            },
+          },
         });
         if (error) throw error;
       } else {
@@ -62,6 +72,26 @@ export default function LoginPage() {
         </h1>
 
         <form onSubmit={handleAuth} className="space-y-4">
+          {isSignUp && (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <input
+                type="text"
+                placeholder="First name"
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                className="w-full rounded-md border text-black p-2"
+                required
+              />
+              <input
+                type="text"
+                placeholder="Last name"
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+                className="w-full rounded-md border text-black p-2"
+                required
+              />
+            </div>
+          )}
           <input
             type="email"
             placeholder="Email"
@@ -86,7 +116,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-md bg-blue-600 text-white font-medium p-2 hover:bg-blue-700 transition"
+            className="w-full rounded-md bg-blue-600 text-white font-medium p-2 hover:bg-blue-700 transition disabled:opacity-70 disabled:cursor-not-allowed"
           >
             {loading
               ? isSignUp
@@ -99,11 +129,12 @@ export default function LoginPage() {
         </form>
 
         <p className="text-sm text-gray-600 text-center mt-4">
-          {isSignUp ? "Already have an account?" : "Don’t have an account?"}{" "}
+          {isSignUp ? "Already have an account?" : "Don't have an account?"}{" "}
           <button
             type="button"
             onClick={() => setIsSignUp(!isSignUp)}
             className="text-blue-600 hover:underline font-medium"
+            disabled={loading}
           >
             {isSignUp ? "Sign In" : "Sign Up"}
           </button>
