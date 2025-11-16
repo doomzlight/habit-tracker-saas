@@ -2,9 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import { useEffect, useState } from "react";
 import type { User } from "@supabase/supabase-js";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 type Habit = {
   id: string;
@@ -30,7 +29,6 @@ export default function Dashboard() {
   const [newHabit, setNewHabit] = useState({ name: "", description: "" });
   const [loading, setLoading] = useState(true);
 
-
   const {
     today,
     startOfMonth,
@@ -41,8 +39,11 @@ export default function Dashboard() {
     monthLabel,
   } = useMemo(() => {
     const now = new Date();
-    const y = now.getUTCFullYear();
-    const m = now.getUTCMonth();
+    const todayDate = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
+    );
+    const y = todayDate.getUTCFullYear();
+    const m = todayDate.getUTCMonth();
     const start = new Date(Date.UTC(y, m, 1));
     const end = new Date(Date.UTC(y, m + 1, 0));
     const formatter = new Intl.DateTimeFormat("en-US", {
@@ -52,7 +53,7 @@ export default function Dashboard() {
     });
 
     return {
-      today: now.toISOString().slice(0, 10), // current date in YYYY-MM-DD
+      today: todayDate.toISOString().slice(0, 10), // current date in YYYY-MM-DD
       startOfMonth: start.toISOString().slice(0, 10),
       daysInMonth: end.getUTCDate(),
       // shift so Monday = 0, Sunday = 6
@@ -62,7 +63,6 @@ export default function Dashboard() {
       monthLabel: formatter.format(start),
     };
   }, []); // only runs once
-
 
   // Load user, habits, and logs for the current month
   useEffect(() => {
@@ -200,8 +200,8 @@ export default function Dashboard() {
     let streak = 0;
     let count = 0;
     const dates = Array.from({ length: 7 }).map((_, i) => {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
+      const d = new Date(today);
+      d.setUTCDate(d.getUTCDate() - i);
       return d.toISOString().slice(0, 10);
     });
 
@@ -333,7 +333,7 @@ export default function Dashboard() {
                         </p>
                       )}
                       <p className="text-xs text-black">
-                        🔥 Streak: {stats.streak} days • {stats.completion}% last 7 days
+                      Streak: {stats.streak} days | {stats.completion}% last 7 days
                       </p>
                     </div>
 
