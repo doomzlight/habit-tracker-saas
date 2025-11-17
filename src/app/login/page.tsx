@@ -65,80 +65,92 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-linear-to-br from-blue-50 to-gray-100">
-      <div className="w-full max-w-sm rounded-2xl bg-white p-8 shadow-lg border border-gray-200">
-        <h1 className="text-2xl font-bold mb-6 text-center text-gray-800">
-          {isSignUp ? "Create Account" : "Sign In"}
-        </h1>
+    <div className="min-h-screen bg-linear-to-br from-slate-900 via-slate-950 to-slate-900 text-slate-100">
+      <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col items-center justify-center px-4 py-10">
+        <div className="flex w-full flex-col gap-6 rounded-2xl border border-white/10 bg-white/5 p-8 shadow-2xl shadow-slate-900/40 backdrop-blur md:max-w-xl">
+          <div className="flex flex-col gap-2 text-center">
+            <p className="text-xs uppercase tracking-[0.2em] text-slate-400">
+              {isSignUp ? "Create account" : "Welcome back"}
+            </p>
+            <h1 className="text-3xl font-bold tracking-tight text-white">
+              {isSignUp ? "Create Account" : "Sign in to Habit Tracker"}
+            </h1>
+            <p className="text-sm text-slate-300">
+              Track, build, and celebrate your routines.
+            </p>
+          </div>
 
-        <form onSubmit={handleAuth} className="space-y-4">
-          {isSignUp && (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <input
-                type="text"
-                placeholder="First name"
-                value={firstName}
-                onChange={(e) => setFirstName(e.target.value)}
-                className="w-full rounded-md border text-black p-2"
-                required
-              />
-              <input
-                type="text"
-                placeholder="Last name"
-                value={lastName}
-                onChange={(e) => setLastName(e.target.value)}
-                className="w-full rounded-md border text-black p-2"
-                required
-              />
-            </div>
-          )}
-          <input
-            type="email"
-            placeholder="Email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="w-full rounded-md border text-black p-2"
-            required
-          />
-          <input
-            type="password"
-            placeholder="Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="w-full rounded-md border text-black p-2"
-            required
-          />
+          <form onSubmit={handleAuth} className="space-y-4">
+            {isSignUp && (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <input
+                  type="text"
+                  placeholder="First name"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  className="w-full rounded-lg border border-white/10 bg-white/10 p-3 text-sm text-white placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
+                  required
+                />
+                <input
+                  type="text"
+                  placeholder="Last name"
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  className="w-full rounded-lg border border-white/10 bg-white/10 p-3 text-sm text-white placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
+                  required
+                />
+              </div>
+            )}
+            <input
+              type="email"
+              placeholder="Email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full rounded-lg border border-white/10 bg-white/10 p-3 text-sm text-white placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
+              required
+            />
+            <input
+              type="password"
+              placeholder="Password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full rounded-lg border border-white/10 bg-white/10 p-3 text-sm text-white placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
+              required
+            />
 
-          {error && (
-            <p className="text-sm text-red-500 text-center">{error}</p>
-          )}
+            {error && (
+              <p className="text-sm text-red-400 text-center">{error}</p>
+            )}
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full rounded-md bg-blue-600 text-white font-medium p-2 hover:bg-blue-700 transition disabled:opacity-70 disabled:cursor-not-allowed"
-          >
-            {loading
-              ? isSignUp
-                ? "Signing up..."
-                : "Signing in..."
-              : isSignUp
-              ? "Sign Up"
-              : "Sign In"}
-          </button>
-        </form>
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full rounded-lg bg-emerald-500 px-4 py-3 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:bg-emerald-400 hover:shadow-lg hover:shadow-emerald-500/30 disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              {loading
+                ? isSignUp
+                  ? "Signing up..."
+                  : "Signing in..."
+                : isSignUp
+                ? "Sign Up"
+                : "Sign In"}
+            </button>
+          </form>
 
-        <p className="text-sm text-gray-600 text-center mt-4">
-          {isSignUp ? "Already have an account?" : "Don't have an account?"}{" "}
-          <button
-            type="button"
-            onClick={() => setIsSignUp(!isSignUp)}
-            className="text-blue-600 hover:underline font-medium"
-            disabled={loading}
-          >
-            {isSignUp ? "Sign In" : "Sign Up"}
-          </button>
-        </p>
+          <div className="flex items-center justify-center gap-2 text-sm text-slate-300">
+            <span>
+              {isSignUp ? "Already have an account?" : "Don't have an account?"}
+            </span>
+            <button
+              type="button"
+              onClick={() => setIsSignUp(!isSignUp)}
+              className="text-emerald-300 hover:text-emerald-200 font-semibold"
+              disabled={loading}
+            >
+              {isSignUp ? "Sign In" : "Sign Up"}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
