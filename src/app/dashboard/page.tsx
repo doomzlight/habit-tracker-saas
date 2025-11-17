@@ -63,6 +63,13 @@ export default function Dashboard() {
   const [draggingHabitId, setDraggingHabitId] = useState<string | null>(null);
   const [draggingOverHabitId, setDraggingOverHabitId] = useState<string | null>(null);
   const [dragOverPosition, setDragOverPosition] = useState<"before" | "after">("before");
+  const [isMobile, setIsMobile] = useState(() => {
+    if (typeof window === "undefined") return false;
+    const ua = navigator.userAgent || "";
+    const mobileRegex = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i;
+    const prefersSmallScreen = window.matchMedia("(max-width: 768px)").matches;
+    return mobileRegex.test(ua) || prefersSmallScreen;
+  });
   const habitsSectionRef = useRef<HTMLDivElement | null>(null);
   const [shouldScrollToHabits, setShouldScrollToHabits] = useState(false);
   const palette = useMemo(
@@ -90,6 +97,20 @@ export default function Dashboard() {
     ],
     []
   );
+
+  useEffect(() => {
+    const detectDevice = () => {
+      if (typeof window === "undefined") return;
+      const ua = navigator.userAgent || "";
+      const mobileRegex = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i;
+      const prefersSmallScreen = window.matchMedia("(max-width: 768px)").matches;
+      setIsMobile(mobileRegex.test(ua) || prefersSmallScreen);
+    };
+
+    detectDevice();
+    window.addEventListener("resize", detectDevice);
+    return () => window.removeEventListener("resize", detectDevice);
+  }, []);
 
   const todayInfo = useMemo(() => {
     const now = new Date();
@@ -805,6 +826,8 @@ export default function Dashboard() {
     });
   }, [filteredHabits, habitOrder]);
 
+  const mobileHabits = orderedFilteredHabits.length > 0 ? orderedFilteredHabits : habits;
+
   const toggleAllToday = async () => {
     if (!user || habits.length === 0) return;
 
@@ -1055,6 +1078,460 @@ export default function Dashboard() {
       <div className="flex min-h-screen items-center justify-center bg-slate-950 text-slate-200">
         <p className="text-sm font-medium">Loading your dashboard...</p>
       </div>
+    );
+  }
+
+  if (isMobile) {
+    const habitsToShow = mobileHabits.length > 0 ? mobileHabits : habits;
+    const todayCompletionPercent = overview.completionToday || 0;
+
+    return (
+      <>
+        <div className="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+          <div className="mx-auto flex w-full max-w-xl flex-col gap-6 px-4 py-8">
+          <header className="rounded-2xl border border-slate-200 bg-white p-5 backdrop-blur dark:border-white/10 dark:bg-slate-900">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">On the go</p>
+                <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Mobile Dashboard</h1>
+                <p className="text-xs text-slate-600 dark:text-slate-300">
+                  Quick actions for checking in and staying on track wherever you are.
+                </p>
+              </div>
+              <div className="flex flex-col items-end gap-2">
+                <Link
+                  href="/profile"
+                  className="inline-flex items-center justify-center rounded-full bg-white/10 px-3 py-2 text-xs font-semibold text-slate-100 transition hover:-translate-y-0.5 hover:bg-white/15"
+                >
+                  Profile
+                </Link>
+                <button
+                  onClick={handleLogout}
+                  className="inline-flex items-center justify-center whitespace-nowrap rounded-full bg-red-500 px-3 py-2 text-xs font-semibold text-white transition hover:-translate-y-0.5 hover:bg-red-400"
+                >
+                  Log Out
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              <div className="rounded-xl border border-slate-200 bg-white p-3 text-slate-900 shadow-sm dark:border-white/10 dark:bg-white/5 dark:text-slate-100">
+                <p className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-300">Active</p>
+                <p className="text-xl font-semibold">{overview.total}</p>
+                <p className="text-[11px] text-slate-600 dark:text-slate-300">{overview.completedToday} logged today</p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-white p-3 text-slate-900 shadow-sm dark:border-white/10 dark:bg-white/5 dark:text-slate-100">
+                <p className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-300">Today done</p>
+                <p className="text-xl font-semibold">
+                  {overview.completedToday}/{overview.total || 0}
+                </p>
+                <p className="text-[11px] text-slate-600 dark:text-slate-300">Tap to toggle below</p>
+              </div>
+            </div>
+
+            <div className="mt-4 space-y-2">
+              <div className="flex items-center justify-between text-[11px] text-slate-600 dark:text-slate-300">
+                <span>Today progress</span>
+                <span className="font-semibold text-slate-900 dark:text-white">{todayCompletionPercent}%</span>
+              </div>
+              <div className="h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-white/10">
+                <div
+                  className="h-full rounded-full bg-emerald-500 transition-all duration-300"
+                  style={{ width: `${todayCompletionPercent}%` }}
+                />
+              </div>
+            </div>
+          </header>
+
+          <section className="rounded-2xl border border-slate-200 bg-white p-5 backdrop-blur dark:border-white/10 dark:bg-slate-900">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">Month</p>
+                <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Calendar</h2>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setViewDate((prev) => {
+                      const d = new Date(prev);
+                      d.setUTCMonth(d.getUTCMonth() - 1);
+                      return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
+                    })
+                  }
+                  className="rounded-full bg-slate-200 px-2 py-1 text-xs font-semibold text-slate-900 hover:bg-slate-300 dark:bg-white/10 dark:text-slate-100 dark:hover:bg-white/15"
+                  aria-label="Previous month"
+                >
+                  Prev
+                </button>
+                <span className="rounded-full bg-slate-200 px-3 py-1 text-xs font-semibold text-slate-900 dark:bg-white/10 dark:text-slate-200">
+                  {monthLabel}
+                </span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setViewDate((prev) => {
+                      const d = new Date(prev);
+                      d.setUTCMonth(d.getUTCMonth() + 1);
+                      return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
+                    })
+                  }
+                  className="rounded-full bg-slate-200 px-2 py-1 text-xs font-semibold text-slate-900 hover:bg-slate-300 dark:bg-white/10 dark:text-slate-100 dark:hover:bg-white/15"
+                  aria-label="Next month"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+            <p className="mt-1 text-[11px] text-slate-600 dark:text-slate-400">Tap a day to see its habits.</p>
+            <div className="mt-4 grid grid-cols-7 gap-2 text-[13px]">
+              {weekdayLabels.map((day) => (
+                <div
+                  key={day}
+                  className="text-center font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300"
+                >
+                  {day}
+                </div>
+              ))}
+              {Array.from({ length: firstDayOffset }).map((_, idx) => (
+                <div key={`blank-mobile-${idx}`} />
+              ))}
+              {monthDays.map((day) => (
+                <button
+                  key={day.iso}
+                  type="button"
+                  onClick={() => setSelectedDate(day.iso)}
+                  className={`flex h-10 flex-col items-center justify-center rounded-lg border text-xs font-semibold transition ${
+                    day.isFuture || day.activeCount === 0
+                      ? "border-slate-200 bg-slate-50 text-slate-700 dark:border-white/10 dark:bg-white/5 dark:text-slate-100"
+                      : day.completeAll
+                      ? "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-400/70 dark:bg-emerald-500/15 dark:text-emerald-200"
+                      : day.completedCount > 0
+                      ? "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-400/60 dark:bg-amber-500/15 dark:text-amber-50"
+                      : "border-red-200 bg-red-50 text-red-800 dark:border-red-400/60 dark:bg-red-500/15 dark:text-red-50"
+                  } ${
+                    day.isToday ? "ring-2 ring-emerald-400 ring-offset-2 ring-offset-white dark:ring-offset-slate-900" : ""
+                  } hover:border-emerald-300/60 hover:bg-emerald-50 dark:hover:bg-emerald-500/10`}
+                  title={`View habits on ${day.iso}`}
+                >
+                  {day.label}
+                </button>
+              ))}
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-slate-200 bg-white p-5 backdrop-blur dark:border-white/10 dark:bg-slate-900">
+            <div className="mb-3 flex items-center justify-between">
+              <div>
+                <p className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">Today</p>
+                <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Your habits</h2>
+              </div>
+              {allCompletedToday ? (
+                <span className="rounded-full bg-emerald-100 px-3 py-1 text-[11px] font-semibold text-emerald-900 dark:bg-emerald-500/15 dark:text-emerald-200">
+                  All done
+                </span>
+              ) : null}
+            </div>
+
+            <div className="mb-4 space-y-3">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <input
+                  type="text"
+                  placeholder="Search habits..."
+                  value={habitQuery}
+                  onChange={(e) => setHabitQuery(e.target.value)}
+                  className="w-full rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-900 placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/60 dark:border-white/10 dark:bg-white/10 dark:text-white dark:placeholder:text-slate-400"
+                />
+                <button
+                  type="button"
+                  onClick={toggleAllToday}
+                  className="w-full rounded-lg border border-emerald-200 bg-emerald-100 px-4 py-3 text-sm font-semibold text-emerald-900 transition hover:bg-emerald-200 dark:border-emerald-400/40 dark:bg-emerald-500/80 dark:text-white dark:hover:bg-emerald-500 sm:w-auto"
+                >
+                  {allCompletedToday ? "Undo day" : "Mark all done"}
+                </button>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {["all", "pending", "completed"].map((filter) => {
+                  const isActive = habitFilter === filter;
+                  const labels: Record<string, string> = {
+                    all: "All",
+                    pending: "To do",
+                    completed: "Done",
+                  };
+                  return (
+                    <button
+                      key={filter}
+                      type="button"
+                        onClick={() => setHabitFilter(filter as typeof habitFilter)}
+                      className={`rounded-full px-3 py-1 text-xs font-semibold transition focus:outline-none focus:ring-2 focus:ring-emerald-400/60 ${
+                        isActive
+                          ? "bg-emerald-100 text-emerald-900 dark:bg-emerald-500 dark:text-white"
+                          : "bg-slate-100 text-slate-900 hover:bg-slate-200 dark:bg-white/10 dark:text-slate-100 dark:hover:bg-white/20"
+                      }`}
+                    >
+                      {labels[filter]}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="-ml-1 flex items-center gap-2 overflow-x-auto pb-1 pl-1">
+                {["all", "uncategorized", ...categoryOptions].map((category) => {
+                  const isActive = categoryFilter === category;
+                  const label =
+                    category === "all"
+                      ? "All tags"
+                      : category === "uncategorized"
+                      ? "No tag"
+                      : category;
+                  return (
+                    <button
+                      key={category}
+                      type="button"
+                      onClick={() => setCategoryFilter(category)}
+                      className={`whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold transition focus:outline-none focus:ring-2 focus:ring-emerald-400/60 ${
+                        isActive
+                          ? "bg-emerald-100 text-emerald-900 dark:bg-emerald-500 dark:text-white"
+                          : "bg-slate-100 text-slate-900 hover:bg-slate-200 dark:bg-white/10 dark:text-slate-100 dark:hover:bg-white/20"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              {habitsToShow.length === 0 ? (
+                <div className="rounded-xl border border-white/10 bg-white/5 p-4 text-sm text-slate-300">
+                  No habits yet. Create your first one below.
+                </div>
+              ) : (
+                habitsToShow.map((habit) => {
+                  const completionSetting = getCompletionSetting(habit.id);
+                  const stats = getHabitStats(
+                    habit,
+                    completionSetting.days,
+                    completionSetting.mode
+                  );
+                  const completed = isCompleted(habit.id);
+
+                  return (
+                    <div
+                      key={habit.id}
+                      className="relative overflow-hidden rounded-xl border border-slate-200 bg-white p-4 pr-6 text-slate-900 dark:border-white/10 dark:bg-slate-900 dark:text-white"
+                    >
+                      <span
+                        aria-hidden
+                        className={`absolute inset-y-0 left-0 w-1.5 ${
+                          completed
+                            ? "bg-emerald-500"
+                            : "bg-amber-500"
+                        }`}
+                      />
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 space-y-1">
+                          <h3 className="text-lg font-semibold">{habit.name}</h3>
+                          {habit.description ? (
+                            <p className="text-sm text-slate-700 dark:text-slate-300">{habit.description}</p>
+                          ) : null}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => toggleHabit(habit.id)}
+                      className={`inline-flex items-center justify-center rounded-full px-3 py-2 text-xs font-semibold transition focus:outline-none focus:ring-2 focus:ring-emerald-400/60 ${
+                        completed
+                          ? "bg-emerald-500 text-white"
+                          : "bg-white/20 text-slate-900 hover:bg-white/30 dark:bg-white/10 dark:text-slate-100 dark:hover:bg-white/20"
+                      }`}
+                    >
+                      {completed ? "Undo today" : "Mark done"}
+                    </button>
+                      </div>
+
+                      <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-700 dark:text-slate-300">
+                        <span className="rounded-full bg-emerald-100 px-3 py-1 font-semibold text-emerald-900 dark:bg-white/10 dark:text-white">
+                          {stats.streak}d streak
+                        </span>
+                        <span className="rounded-full bg-sky-100 px-3 py-1 font-semibold text-sky-900 dark:bg-white/5 dark:text-slate-200">
+                          {stats.completion}% weekly
+                        </span>
+                        {(habit.categories || []).map((category) => (
+                          <span
+                            key={`${habit.id}-${category}`}
+                            className="rounded-full px-3 py-1 font-semibold text-slate-900 dark:text-white"
+                            style={{ backgroundColor: `${getCategoryColor(category)}33` }}
+                          >
+                            {category}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-slate-200 bg-white p-5 backdrop-blur dark:border-white/10 dark:bg-slate-900">
+            <div className="mb-3">
+              <p className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">Create a habit</p>
+              <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Add something new</h2>
+            </div>
+            <form onSubmit={addHabit} className="space-y-3">
+              <input
+                type="text"
+                placeholder="Habit name"
+                value={newHabit.name}
+                onChange={(e) => setNewHabit({ ...newHabit, name: e.target.value })}
+                className="w-full rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-900 placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/60 dark:border-white/10 dark:bg-white/10 dark:text-white dark:placeholder:text-slate-400"
+                required
+              />
+              <input
+                type="text"
+                placeholder="Description (optional)"
+                value={newHabit.description || ""}
+                onChange={(e) =>
+                  setNewHabit({ ...newHabit, description: e.target.value })
+                }
+                className="w-full rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-900 placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/60 dark:border-white/10 dark:bg-white/10 dark:text-white dark:placeholder:text-slate-400"
+              />
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  placeholder="Add a tag"
+                  value={newCategoryInput}
+                  onChange={(e) => setNewCategoryInput(e.target.value)}
+                  className="flex-1 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-900 placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/60 dark:border-white/10 dark:bg-white/10 dark:text-white dark:placeholder:text-slate-400"
+                />
+                <button
+                  type="button"
+                  onClick={addCustomCategoryToNewHabit}
+                  className="rounded-lg bg-slate-200 px-3 py-2 text-sm font-semibold text-slate-900 transition hover:bg-slate-300 dark:bg-white/10 dark:text-slate-100 dark:hover:bg-white/20"
+                >
+                  Add
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {categoryOptions.length === 0 ? (
+                  <span className="text-xs text-slate-500 dark:text-slate-400">No tags yet. Add one above.</span>
+                ) : (
+                  categoryOptions.map((category) => {
+                    const active = newHabit.categories.includes(category);
+                    return (
+                      <button
+                        key={category}
+                        type="button"
+                        onClick={() =>
+                          setNewHabit((prev) => ({
+                            ...prev,
+                            categories: toggleCategorySelection(prev.categories, category),
+                          }))
+                        }
+                        className={`rounded-full px-3 py-1 text-xs font-semibold transition focus:outline-none focus:ring-2 focus:ring-emerald-400/60 ${
+                          active
+                            ? "bg-emerald-500 text-white"
+                            : "bg-slate-100 text-slate-900 hover:bg-slate-200 dark:bg-white/10 dark:text-slate-100 dark:hover:bg-white/20"
+                        }`}
+                        style={active ? { boxShadow: `0 0 0 1px ${getCategoryColor(category)}` } : undefined}
+                      >
+                        {category}
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+              {formError ? (
+                <p className="text-sm text-red-400">{formError}</p>
+              ) : null}
+              <button
+                type="submit"
+                className="w-full rounded-lg border border-emerald-200 bg-emerald-100 px-4 py-3 text-sm font-semibold text-emerald-900 transition hover:bg-emerald-200 dark:border-emerald-400/40 dark:bg-emerald-500/80 dark:text-white dark:hover:bg-emerald-500"
+              >
+                Add habit
+              </button>
+            </form>
+          </section>
+          </div>
+        </div>
+
+        {selectedDate && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 px-4"
+            onClick={() => setSelectedDate(null)}
+          >
+            <div
+              className="w-full max-w-lg rounded-2xl border border-white/10 bg-slate-900 p-5 shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-slate-400">Habits on</p>
+                  <h3 className="text-xl font-semibold text-white">{selectedDate}</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedDate(null)}
+                  className="rounded-full bg-white/10 px-3 py-1 text-xs font-semibold text-slate-100 hover:bg-white/20"
+                >
+                  Close
+                </button>
+              </div>
+              {selectedDayHabits.length === 0 ? (
+                <p className="mt-4 text-sm text-slate-300">No habits to show for this day.</p>
+              ) : (
+                <ul className="mt-4 space-y-2">
+                  {selectedDayHabits.map(({ habit, done }) => (
+                    <li
+                      key={habit.id}
+                      className="flex items-center justify-between rounded-lg border border-white/10 bg-white/5 px-3 py-3 text-sm text-slate-100"
+                    >
+                      <div className="flex flex-col">
+                        <span className="font-semibold text-white">{habit.name}</span>
+                        {habit.description && (
+                          <span className="text-xs text-slate-300">{habit.description}</span>
+                        )}
+                        {habit.categories?.length > 0 && (
+                          <span className="mt-1 inline-flex w-fit flex-wrap gap-2">
+                            {habit.categories.map((cat) => (
+                              <span
+                                key={cat}
+                                className="inline-flex rounded-full border border-white/15 bg-white/10 px-2 py-0.5 text-[11px] font-semibold text-slate-100"
+                              >
+                                {cat}
+                              </span>
+                            ))}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span
+                          className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                            done
+                              ? "border border-emerald-300/40 bg-emerald-500/15 text-emerald-100"
+                              : "border border-slate-400/40 bg-slate-500/15 text-slate-100"
+                          }`}
+                        >
+                          {done ? "Completed" : "Not done"}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => toggleHabitOnDate(habit.id, selectedDate)}
+                          className="rounded-full bg-white/10 px-3 py-1 text-xs font-semibold text-slate-100 hover:bg-white/20"
+                        >
+                          {done ? "Mark undone" : "Mark done"}
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        )}
+      </>
     );
   }
 
