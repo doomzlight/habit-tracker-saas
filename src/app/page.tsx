@@ -1,27 +1,30 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
 export default function HomePage() {
   const router = useRouter();
-  const supabase = createClientComponentClient();
+  const supabase = useMemo(() => createClientComponentClient(), []);
 
   useEffect(() => {
-    const checkUser = async () => {
+    let active = true;
+
+    const redirectToDestination = async () => {
       const {
         data: { user },
       } = await supabase.auth.getUser();
 
-      if (user) {
-        router.push("/dashboard");
-      } else {
-        router.push("/login");
-      }
+      if (!active) return;
+      router.replace(user ? "/dashboard" : "/login");
     };
 
-    checkUser();
+    redirectToDestination();
+
+    return () => {
+      active = false;
+    };
   }, [router, supabase]);
 
   return (

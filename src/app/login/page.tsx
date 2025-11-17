@@ -1,29 +1,63 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
+type AuthFormState = {
+  firstName: string;
+  lastName: string;
+  email: string;
+  password: string;
+};
+
+const initialFormState: AuthFormState = {
+  firstName: "",
+  lastName: "",
+  email: "",
+  password: "",
+};
+
+const inputClasses =
+  "w-full rounded-lg border border-white/10 bg-white/10 p-3 text-sm text-white placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/60";
+
 export default function LoginPage() {
   const router = useRouter();
-  const supabase = createClientComponentClient();
+  const supabase = useMemo(() => createClientComponentClient(), []);
 
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [formValues, setFormValues] = useState<AuthFormState>(initialFormState);
   const [isSignUp, setIsSignUp] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const { firstName, lastName, email, password } = formValues;
+  const actionLabel = isSignUp ? "Sign Up" : "Sign In";
+  const buttonLabel = loading
+    ? `${isSignUp ? "Signing up" : "Signing in"}...`
+    : actionLabel;
+
+  const updateField = useCallback(
+    (field: keyof AuthFormState) =>
+      (event: ChangeEvent<HTMLInputElement>) => {
+        const { value } = event.target;
+        setFormValues((prev) => ({ ...prev, [field]: value }));
+      },
+    []
+  );
+
   useEffect(() => {
+    let active = true;
     const checkSession = async () => {
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      if (user) router.push("/dashboard");
+      if (user && active) router.replace("/dashboard");
     };
     checkSession();
+
+    return () => {
+      active = false;
+    };
   }, [router, supabase]);
 
   const handleAuth = async (e: FormEvent) => {
@@ -32,25 +66,26 @@ export default function LoginPage() {
     setError("");
 
     try {
-      if (isSignUp) {
-        const { error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            data: {
-              first_name: firstName.trim(),
-              last_name: lastName.trim(),
+      const trimmedEmail = email.trim();
+      const trimmedPassword = password.trim();
+
+      const authResponse = isSignUp
+        ? await supabase.auth.signUp({
+            email: trimmedEmail,
+            password: trimmedPassword,
+            options: {
+              data: {
+                first_name: firstName.trim(),
+                last_name: lastName.trim(),
+              },
             },
-          },
-        });
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
-        if (error) throw error;
-      }
+          })
+        : await supabase.auth.signInWithPassword({
+            email: trimmedEmail,
+            password: trimmedPassword,
+          });
+
+      if (authResponse.error) throw authResponse.error;
 
       router.push("/dashboard");
     } catch (err) {
@@ -87,16 +122,16 @@ export default function LoginPage() {
                   type="text"
                   placeholder="First name"
                   value={firstName}
-                  onChange={(e) => setFirstName(e.target.value)}
-                  className="w-full rounded-lg border border-white/10 bg-white/10 p-3 text-sm text-white placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
+                  onChange={updateField("firstName")}
+                  className={inputClasses}
                   required
                 />
                 <input
                   type="text"
                   placeholder="Last name"
                   value={lastName}
-                  onChange={(e) => setLastName(e.target.value)}
-                  className="w-full rounded-lg border border-white/10 bg-white/10 p-3 text-sm text-white placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
+                  onChange={updateField("lastName")}
+                  className={inputClasses}
                   required
                 />
               </div>
@@ -105,16 +140,16 @@ export default function LoginPage() {
               type="email"
               placeholder="Email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-lg border border-white/10 bg-white/10 p-3 text-sm text-white placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
+              onChange={updateField("email")}
+              className={inputClasses}
               required
             />
             <input
               type="password"
               placeholder="Password"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-lg border border-white/10 bg-white/10 p-3 text-sm text-white placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
+              onChange={updateField("password")}
+              className={inputClasses}
               required
             />
 
@@ -127,13 +162,7 @@ export default function LoginPage() {
               disabled={loading}
               className="w-full rounded-lg bg-emerald-500 px-4 py-3 text-sm font-semibold text-slate-900 transition hover:-translate-y-0.5 hover:bg-emerald-400 hover:shadow-lg hover:shadow-emerald-500/30 disabled:cursor-not-allowed disabled:opacity-70"
             >
-              {loading
-                ? isSignUp
-                  ? "Signing up..."
-                  : "Signing in..."
-                : isSignUp
-                ? "Sign Up"
-                : "Sign In"}
+              {buttonLabel}
             </button>
           </form>
 
@@ -143,7 +172,10 @@ export default function LoginPage() {
             </span>
             <button
               type="button"
-              onClick={() => setIsSignUp(!isSignUp)}
+              onClick={() => {
+                setIsSignUp((prev) => !prev);
+                setError("");
+              }}
               className="text-emerald-300 hover:text-emerald-200 font-semibold"
               disabled={loading}
             >

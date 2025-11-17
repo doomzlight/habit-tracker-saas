@@ -32,20 +32,21 @@ const applyThemeToRoot = (next: Theme) => {
   localStorage.setItem(STORAGE_KEY, next);
 };
 
+const getStoredOrPreferredTheme = (): Theme => {
+  if (typeof window === "undefined") return "dark";
+  const stored = localStorage.getItem(STORAGE_KEY);
+  if (stored === "light" || stored === "dark") return stored;
+  const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+  return prefersDark ? "dark" : "light";
+};
+
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>("dark");
-  const [mounted, setMounted] = useState(false);
+  const [theme, setThemeState] = useState<Theme>(() => getStoredOrPreferredTheme());
+  const mounted = typeof window !== "undefined";
 
   useEffect(() => {
-    const stored = typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null;
-    const prefersDark =
-      typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches;
-    const initial: Theme =
-      stored === "light" || stored === "dark" ? stored : prefersDark ? "dark" : "light";
-    setThemeState(initial);
-    applyThemeToRoot(initial);
-    setMounted(true);
-  }, []);
+    applyThemeToRoot(theme);
+  }, [theme]);
 
   const setTheme = useCallback((next: Theme) => {
     setThemeState(next);

@@ -1,22 +1,44 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { User } from "@supabase/supabase-js";
 import { useTheme } from "@/components/ThemeProvider";
 
+type ProfileFormState = {
+  firstName: string;
+  lastName: string;
+  email: string;
+};
+
+type PasswordFormState = {
+  newPassword: string;
+  confirmPassword: string;
+};
+
+const defaultProfileForm: ProfileFormState = {
+  firstName: "",
+  lastName: "",
+  email: "",
+};
+
+const defaultPasswordForm: PasswordFormState = {
+  newPassword: "",
+  confirmPassword: "",
+};
+
+const inputClasses =
+  "w-full rounded-lg border border-white/10 bg-white/10 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/60";
+
 export default function ProfilePage() {
-  const supabase = createClientComponentClient();
+  const supabase = useMemo(() => createClientComponentClient(), []);
   const router = useRouter();
 
   const [user, setUser] = useState<User | null>(null);
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
-  const [email, setEmail] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
+  const [profileForm, setProfileForm] = useState<ProfileFormState>(defaultProfileForm);
+  const [passwordForm, setPasswordForm] = useState<PasswordFormState>(defaultPasswordForm);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -24,21 +46,50 @@ export default function ProfilePage() {
   const { theme, setTheme, mounted: themeReady } = useTheme();
   const resolvedTheme = themeReady ? theme : "dark";
 
+  const { firstName, lastName, email } = profileForm;
+  const { newPassword, confirmPassword } = passwordForm;
+
+  const handleProfileFieldChange = useCallback(
+    (field: keyof ProfileFormState) =>
+      (event: ChangeEvent<HTMLInputElement>) => {
+        const { value } = event.target;
+        setProfileForm((prev) => ({ ...prev, [field]: value }));
+      },
+    []
+  );
+
+  const handlePasswordFieldChange = useCallback(
+    (field: keyof PasswordFormState) =>
+      (event: ChangeEvent<HTMLInputElement>) => {
+        const { value } = event.target;
+        setPasswordForm((prev) => ({ ...prev, [field]: value }));
+      },
+    []
+  );
+
   useEffect(() => {
+    let active = true;
     const fetchUser = async () => {
       const { data } = await supabase.auth.getUser();
+      if (!active) return;
       if (!data.user) {
-        router.push("/login");
+        router.replace("/login");
         return;
       }
       setUser(data.user);
-      setFirstName((data.user.user_metadata?.first_name as string) || "");
-      setLastName((data.user.user_metadata?.last_name as string) || "");
-      setEmail(data.user.email || "");
+      setProfileForm({
+        firstName: (data.user.user_metadata?.first_name as string) || "",
+        lastName: (data.user.user_metadata?.last_name as string) || "",
+        email: data.user.email || "",
+      });
       setLoading(false);
     };
 
     fetchUser();
+
+    return () => {
+      active = false;
+    };
   }, [router, supabase]);
 
   const handleUpdate = async (e: FormEvent) => {
@@ -105,8 +156,7 @@ export default function ProfilePage() {
       }
     } finally {
       setSaving(false);
-      setNewPassword("");
-      setConfirmPassword("");
+      setPasswordForm(defaultPasswordForm);
     }
   };
 
@@ -190,8 +240,8 @@ export default function ProfilePage() {
                   <input
                     type="text"
                     value={firstName}
-                    onChange={(e) => setFirstName(e.target.value)}
-                    className="w-full rounded-lg border border-white/10 bg-white/10 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
+                    onChange={handleProfileFieldChange("firstName")}
+                    className={inputClasses}
                     required
                   />
                 </label>
@@ -200,8 +250,8 @@ export default function ProfilePage() {
                   <input
                     type="text"
                     value={lastName}
-                    onChange={(e) => setLastName(e.target.value)}
-                    className="w-full rounded-lg border border-white/10 bg-white/10 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
+                    onChange={handleProfileFieldChange("lastName")}
+                    className={inputClasses}
                     required
                   />
                 </label>
@@ -215,8 +265,8 @@ export default function ProfilePage() {
                 <input
                   type="email"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full rounded-lg border border-white/10 bg-white/10 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
+                  onChange={handleProfileFieldChange("email")}
+                  className={inputClasses}
                   required
                 />
                 <span className="block pl-2 text-[11px] text-slate-400 pb-1">
@@ -232,9 +282,9 @@ export default function ProfilePage() {
                 <input
                   type="password"
                   value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
+                  onChange={handlePasswordFieldChange("newPassword")}
                   placeholder="Leave blank to keep current password"
-                  className="w-full rounded-lg border border-white/10 bg-white/10 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
+                  className={inputClasses}
                 />
                 <span className="block pl-2 text-[11px] text-slate-400 pb-1">
                   Minimum 6 characters recommended.
@@ -245,9 +295,9 @@ export default function ProfilePage() {
                 <input
                   type="password"
                   value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  onChange={handlePasswordFieldChange("confirmPassword")}
                   placeholder="Re-enter new password"
-                  className="w-full rounded-lg border border-white/10 bg-white/10 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
+                  className={inputClasses}
                 />
               </label>
             </div>

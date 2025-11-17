@@ -23,8 +23,103 @@ type HabitLog = {
   completed: boolean;
 };
 
+const HABIT_ORDER_STORAGE_KEY = "habit-order";
+const HABIT_TAG_CATALOG_STORAGE_KEY = "habit-tag-catalog";
+const HABIT_CATEGORY_COLORS_STORAGE_KEY = "habit-category-colors";
+
+const CATEGORY_PALETTE = [
+  "#22c55e",
+  "#0ea5e9",
+  "#06b6d4",
+  "#10b981",
+  "#14b8a6",
+  "#38bdf8",
+  "#3b82f6",
+  "#6366f1",
+  "#7c3aed",
+  "#8b5cf6",
+  "#a855f7",
+  "#c084fc",
+  "#d946ef",
+  "#eab308",
+  "#f59e0b",
+  "#f97316",
+  "#f43f5e",
+  "#ef4444",
+  "#84cc16",
+  "#1e293b",
+] as const;
+
+const readJsonStorage = <T,>(key: string): T | null => {
+  if (typeof window === "undefined") return null;
+  try {
+    const stored = window.localStorage.getItem(key);
+    return stored ? (JSON.parse(stored) as T) : null;
+  } catch {
+    return null;
+  }
+};
+
+const writeJsonStorage = (key: string, value: unknown) => {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // ignore storage errors
+  }
+};
+
+const normalizeStringArray = (maybe: unknown): string[] => {
+  if (!Array.isArray(maybe)) return [];
+  return Array.from(
+    new Set(
+      maybe
+        .map((item) => (typeof item === "string" ? item : String(item)))
+        .map((item) => item.trim())
+        .filter(Boolean)
+    )
+  );
+};
+
+const normalizeCategories = (raw: string | null): string[] => {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return normalizeStringArray(parsed);
+    }
+  } catch {
+    // fall through to legacy parsing
+  }
+  return Array.from(
+    new Set(
+      raw
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean)
+    )
+  );
+};
+
+const serializeCategories = (categories: string[]): string | null => {
+  const unique = Array.from(
+    new Set(categories.map((category) => category.trim()).filter(Boolean))
+  );
+  return unique.length > 0 ? JSON.stringify(unique) : null;
+};
+
+const toggleCategorySelection = (list: string[], category: string): string[] => {
+  const trimmed = category.trim();
+  if (!trimmed) return list;
+  return list.includes(trimmed) ? list.filter((item) => item !== trimmed) : [...list, trimmed];
+};
+
+const normalizeTag = (tag: string) => tag.trim();
+const tagsMatch = (a: string, b: string) =>
+  normalizeTag(a).toLowerCase() === normalizeTag(b).toLowerCase();
+
 export default function Dashboard() {
-  const supabase = createClientComponentClient();
+  const supabase = useMemo(() => createClientComponentClient(), []);
   const router = useRouter();
 
   const [user, setUser] = useState<User | null>(null);
@@ -65,31 +160,7 @@ export default function Dashboard() {
   const [dragOverPosition, setDragOverPosition] = useState<"before" | "after">("before");
   const habitsSectionRef = useRef<HTMLDivElement | null>(null);
   const [shouldScrollToHabits, setShouldScrollToHabits] = useState(false);
-  const palette = useMemo(
-    () => [
-      "#22c55e",
-      "#0ea5e9",
-      "#06b6d4",
-      "#10b981",
-      "#14b8a6",
-      "#38bdf8",
-      "#3b82f6",
-      "#6366f1",
-      "#7c3aed",
-      "#8b5cf6",
-      "#a855f7",
-      "#c084fc",
-      "#d946ef",
-      "#eab308",
-      "#f59e0b",
-      "#f97316",
-      "#f43f5e",
-      "#ef4444",
-      "#84cc16",
-      "#1e293b",
-    ],
-    []
-  );
+  const palette = CATEGORY_PALETTE;
 
   const todayInfo = useMemo(() => {
     const now = new Date();
@@ -121,77 +192,10 @@ export default function Dashboard() {
     [categoryColors, palette]
   );
 
-  const normalizeCategories = useCallback((raw: string | null) => {
-    if (!raw) return [];
-    // Try JSON (new format)
-    try {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        return Array.from(
-          new Set(
-            parsed
-              .map((item) => (typeof item === "string" ? item : String(item)))
-              .map((item) => item.trim())
-              .filter(Boolean)
-          )
-        );
-      }
-    } catch {
-      // fall through to legacy parsing
-    }
-    // Legacy single category or comma-separated string
-    return Array.from(
-      new Set(
-        raw
-          .split(",")
-          .map((item) => item.trim())
-          .filter(Boolean)
-      )
-    );
-  }, []);
-
-  const serializeCategories = useCallback((categories: string[]) => {
-    const unique = Array.from(new Set(categories.map((c) => c.trim()).filter(Boolean)));
-    return unique.length > 0 ? JSON.stringify(unique) : null;
-  }, []);
-
-  const toggleCategorySelection = useCallback((list: string[], category: string) => {
-    const trimmed = category.trim();
-    if (!trimmed) return list;
-    return list.includes(trimmed) ? list.filter((c) => c !== trimmed) : [...list, trimmed];
-  }, []);
-
-  const addCustomCategoryToNewHabit = useCallback(() => {
-    const trimmed = newCategoryInput.trim();
-    if (!trimmed) return;
-    setNewHabit((prev) => {
-      if (prev.categories.includes(trimmed)) return prev;
-      return { ...prev, categories: [...prev.categories, trimmed] };
-    });
-    setNewCategoryInput("");
-  }, [newCategoryInput]);
-
-  const addCustomCategoryToEditHabit = useCallback(() => {
-    const trimmed = editCategoryInput.trim();
-    if (!trimmed) return;
-    setEditValues((prev) => {
-      if (prev.categories.includes(trimmed)) return prev;
-      return { ...prev, categories: [...prev.categories, trimmed] };
-    });
-    setEditCategoryInput("");
-  }, [editCategoryInput]);
-
-  const normalizeTag = (tag: string) => tag.trim();
-  const tagsMatch = (a: string, b: string) =>
-    a.trim().toLowerCase() === b.trim().toLowerCase();
   const syncHabitOrder = useCallback(
     (next: string[]) => {
       setHabitOrder(next);
-      try {
-        localStorage.setItem("habit-order", JSON.stringify(next));
-      } catch {
-        // ignore storage issues
-      }
+      writeJsonStorage(HABIT_ORDER_STORAGE_KEY, next);
     },
     [setHabitOrder]
   );
@@ -238,29 +242,6 @@ export default function Dashboard() {
     [habits, syncHabitOrder]
   );
 
-  const loadTagCatalog = useCallback(() => {
-    try {
-      const stored = localStorage.getItem("habit-tag-catalog");
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed)) {
-          setTagCatalog(
-            Array.from(
-              new Set(
-                parsed
-                  .map((t) => (typeof t === "string" ? t : String(t)))
-                  .map((t) => t.trim())
-                  .filter(Boolean)
-              )
-            )
-          );
-        }
-      }
-    } catch {
-      // ignore
-    }
-  }, []);
-
   const calendarMeta = useMemo(() => {
     const viewYear = viewDate.getUTCFullYear();
     const viewMonth = viewDate.getUTCMonth();
@@ -285,20 +266,17 @@ export default function Dashboard() {
 
   // Hydrate tag colors from localStorage
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem("habit-category-colors");
-      if (stored) {
-        const parsed = JSON.parse(stored) as Record<string, string>;
-        setCategoryColors(parsed);
-      }
-    } catch {
-      // ignore
+    const stored = readJsonStorage<Record<string, string>>(HABIT_CATEGORY_COLORS_STORAGE_KEY);
+    if (stored) {
+      setCategoryColors(stored);
     }
   }, []);
 
   useEffect(() => {
-    loadTagCatalog();
-  }, [loadTagCatalog]);
+    const stored = readJsonStorage<unknown>(HABIT_TAG_CATALOG_STORAGE_KEY);
+    if (!stored) return;
+    setTagCatalog(normalizeStringArray(stored));
+  }, []);
 
   // Load user, habits, and logs for the current month
   useEffect(() => {
@@ -332,7 +310,7 @@ export default function Dashboard() {
     };
 
     loadData();
-  }, [normalizeCategories, router, supabase]);
+  }, [router, supabase]);
 
   // Scroll toward the habits section after adding a new habit so filters stay in view
   useEffect(() => {
@@ -347,18 +325,10 @@ export default function Dashboard() {
 
   // Hydrate habit order from localStorage
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem("habit-order");
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed)) {
-          const normalized = parsed.map((id) => String(id)).filter(Boolean);
-          setHabitOrder(normalized);
-        }
-      }
-    } catch {
-      // ignore storage errors
-    }
+    const stored = readJsonStorage<unknown>(HABIT_ORDER_STORAGE_KEY);
+    if (!stored) return;
+    const normalized = normalizeStringArray(stored).filter(Boolean);
+    setHabitOrder(normalized);
   }, []);
 
   // Keep habit order in sync with current habits list
@@ -372,11 +342,7 @@ export default function Dashboard() {
       const unchanged =
         next.length === prev.length && next.every((id, idx) => id === prev[idx]);
       if (unchanged) return prev;
-      try {
-        localStorage.setItem("habit-order", JSON.stringify(next));
-      } catch {
-        // ignore storage issues
-      }
+      writeJsonStorage(HABIT_ORDER_STORAGE_KEY, next);
       return next;
     });
   }, [habits]);
@@ -680,30 +646,18 @@ export default function Dashboard() {
         }
       });
       if (changed) {
-        try {
-          localStorage.setItem("habit-category-colors", JSON.stringify(next));
-        } catch {
-          // ignore storage errors
-        }
+        writeJsonStorage(HABIT_CATEGORY_COLORS_STORAGE_KEY, next);
       }
       return next;
     });
   }, [categoryOptions, palette]);
 
   useEffect(() => {
-    try {
-      localStorage.setItem("habit-category-colors", JSON.stringify(categoryColors));
-    } catch {
-      // ignore
-    }
+    writeJsonStorage(HABIT_CATEGORY_COLORS_STORAGE_KEY, categoryColors);
   }, [categoryColors]);
 
   useEffect(() => {
-    try {
-      localStorage.setItem("habit-tag-catalog", JSON.stringify(tagCatalog));
-    } catch {
-      // ignore
-    }
+    writeJsonStorage(HABIT_TAG_CATALOG_STORAGE_KEY, tagCatalog);
   }, [tagCatalog]);
 
   const logsByHabit = useMemo(() => {
@@ -899,11 +853,7 @@ export default function Dashboard() {
       if (prev[tag]) return prev;
       const color = getNextPaletteColor();
       const next = { ...prev, [tag]: color };
-      try {
-        localStorage.setItem("habit-category-colors", JSON.stringify(next));
-      } catch {
-        // ignore storage errors
-      }
+      writeJsonStorage(HABIT_CATEGORY_COLORS_STORAGE_KEY, next);
       return next;
     });
   };
@@ -2250,11 +2200,7 @@ export default function Dashboard() {
                                 setCategoryColors((prev) => {
                                   const next = { ...prev };
                                   delete next[cat];
-                                  try {
-                                    localStorage.setItem("habit-category-colors", JSON.stringify(next));
-                                  } catch {
-                                    // ignore
-                                  }
+                                  writeJsonStorage(HABIT_CATEGORY_COLORS_STORAGE_KEY, next);
                                   return next;
                                 })
                               }
@@ -2318,11 +2264,7 @@ export default function Dashboard() {
                         onClick={() => {
                           setCategoryColors((prev) => {
                             const next = { ...prev, [colorMenuTarget]: choice };
-                            try {
-                              localStorage.setItem("habit-category-colors", JSON.stringify(next));
-                            } catch {
-                              // ignore
-                            }
+                            writeJsonStorage(HABIT_CATEGORY_COLORS_STORAGE_KEY, next);
                             return next;
                           });
                           setColorMenuOpen(null);
