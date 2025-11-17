@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { User } from "@supabase/supabase-js";
+import { useTheme } from "@/components/ThemeProvider";
 
 export default function ProfilePage() {
   const supabase = createClientComponentClient();
@@ -20,6 +21,8 @@ export default function ProfilePage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const { theme, setTheme, mounted: themeReady } = useTheme();
+  const resolvedTheme = themeReady ? theme : "dark";
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -147,66 +150,107 @@ export default function ProfilePage() {
 
         <section className="rounded-2xl border border-white/10 bg-white/5 p-6 shadow-2xl shadow-slate-900/40 backdrop-blur">
           <form onSubmit={handleUpdate} className="space-y-4">
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="flex flex-col gap-3 rounded-xl border border-white/10 bg-white/10 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="space-y-1 pl-2">
+                <p className="text-sm font-semibold text-white">Appearance</p>
+                <p className="text-xs text-slate-400">Switch between light and dark mode for the whole app.</p>
+              </div>
+              <div className="flex items-center gap-2 pr-1">
+                <button
+                  type="button"
+                  aria-pressed={resolvedTheme === "light"}
+                  onClick={() => setTheme("light")}
+                  className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                    resolvedTheme === "light"
+                    ? "bg-emerald-500 text-slate-900 shadow shadow-emerald-500/30"
+                      : "bg-white/10 text-slate-200 hover:bg-white/15"
+                  }`}
+                >
+                  Light
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={resolvedTheme === "dark"}
+                  onClick={() => setTheme("dark")}
+                  className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                    resolvedTheme === "dark"
+                    ? "bg-emerald-500 text-slate-900 shadow shadow-emerald-500/30"
+                      : "bg-white/10 text-slate-200 hover:bg-white/15"
+                  }`}
+                >
+                  Dark
+                </button>
+              </div>
+            </div>
+            <div className="space-y-4 rounded-xl border border-white/10 bg-white/5 p-4">
+              <p className="px-2 text-sm font-semibold text-white">Personal details</p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="space-y-1 text-sm">
+                  <span className="block pl-2 text-slate-300">First name</span>
+                  <input
+                    type="text"
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                    className="w-full rounded-lg border border-white/10 bg-white/10 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
+                    required
+                  />
+                </label>
+                <label className="space-y-1 text-sm">
+                  <span className="block pl-2 text-slate-300">Last name</span>
+                  <input
+                    type="text"
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                    className="w-full rounded-lg border border-white/10 bg-white/10 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
+                    required
+                  />
+                </label>
+              </div>
+            </div>
+
+            <div className="space-y-3 rounded-xl border border-white/10 bg-white/5 p-4">
+              <p className="px-2 text-sm font-semibold text-white">Contact</p>
               <label className="space-y-1 text-sm">
-                <span className="text-slate-300">First name</span>
+                <span className="block pl-2 text-slate-300">Email</span>
                 <input
-                  type="text"
-                  value={firstName}
-                  onChange={(e) => setFirstName(e.target.value)}
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                   className="w-full rounded-lg border border-white/10 bg-white/10 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
                   required
                 />
-              </label>
-              <label className="space-y-1 text-sm">
-                <span className="text-slate-300">Last name</span>
-                <input
-                  type="text"
-                  value={lastName}
-                  onChange={(e) => setLastName(e.target.value)}
-                  className="w-full rounded-lg border border-white/10 bg-white/10 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
-                  required
-                />
+                <span className="block pl-2 text-[11px] text-slate-400 pb-1">
+                  Changing email may require confirmation.
+                </span>
               </label>
             </div>
 
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-300">Email</span>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full rounded-lg border border-white/10 bg-white/10 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
-                required
-              />
-              <span className="text-[11px] text-slate-400 block">
-                Changing email may require confirmation.
-              </span>
-            </label>
-
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-300">New password</span>
-              <input
-                type="password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                placeholder="Leave blank to keep current password"
-                className="w-full rounded-lg border border-white/10 bg-white/10 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
-              />
-              <span className="text-[11px] text-slate-400">
-                Minimum 6 characters recommended.
-              </span>
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-300">Confirm new password</span>
-              <input
-                type="password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                placeholder="Re-enter new password"
-                className="w-full rounded-lg border border-white/10 bg-white/10 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
-              />
-            </label>
+            <div className="space-y-3 rounded-xl border border-white/10 bg-white/5 p-4">
+              <p className="px-2 text-sm font-semibold text-white">Security</p>
+              <label className="space-y-1 text-sm">
+                <span className="block pl-2 text-slate-300">New password</span>
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="Leave blank to keep current password"
+                  className="w-full rounded-lg border border-white/10 bg-white/10 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
+                />
+                <span className="block pl-2 text-[11px] text-slate-400 pb-1">
+                  Minimum 6 characters recommended.
+                </span>
+              </label>
+              <label className="space-y-1 text-sm">
+                <span className="block pl-2 text-slate-300">Confirm new password</span>
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Re-enter new password"
+                  className="w-full rounded-lg border border-white/10 bg-white/10 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
+                />
+              </label>
+            </div>
 
             {message && (
               <div className="rounded-lg bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200 border border-emerald-500/30">
@@ -230,7 +274,7 @@ export default function ProfilePage() {
               <button
                 type="submit"
                 disabled={saving}
-                className="rounded-md bg-emerald-500 px-4 py-2 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-md bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-900 transition hover:-translate-y-0.5 hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {saving ? "Saving..." : "Save changes"}
               </button>

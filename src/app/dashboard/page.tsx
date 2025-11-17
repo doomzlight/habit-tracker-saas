@@ -5,13 +5,14 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { User } from "@supabase/supabase-js";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type Habit = {
   id: string;
   name: string;
   description: string | null;
-  category: string | null;
+  category: string | null; // legacy single category field stored in DB
+  categories: string[]; // normalized list of categories
   created_at: string;
 };
 
@@ -29,8 +30,8 @@ export default function Dashboard() {
   const [user, setUser] = useState<User | null>(null);
   const [habits, setHabits] = useState<Habit[]>([]);
   const [logs, setLogs] = useState<HabitLog[]>([]);
-  const [newHabit, setNewHabit] = useState({ name: "", description: "", category: "" });
-  const [newCategoryMode, setNewCategoryMode] = useState<"list" | "custom">("list");
+  const [newHabit, setNewHabit] = useState({ name: "", description: "", categories: [] as string[] });
+  const [newCategoryInput, setNewCategoryInput] = useState("");
   const [loading, setLoading] = useState(true);
   const [completionSettings, setCompletionSettings] = useState<
     Record<string, { mode: "window" | "lifetime"; days: number }>
@@ -40,14 +41,53 @@ export default function Dashboard() {
   const [habitQuery, setHabitQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [editingHabitId, setEditingHabitId] = useState<string | null>(null);
-  const [editValues, setEditValues] = useState({ name: "", description: "", category: "" });
-  const [editCategoryMode, setEditCategoryMode] = useState<"list" | "custom">("list");
+  const [editValues, setEditValues] = useState({
+    name: "",
+    description: "",
+    categories: [] as string[],
+  });
+  const [editCategoryInput, setEditCategoryInput] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [categoryColors, setCategoryColors] = useState<Record<string, string>>({});
   const [manageCategoriesOpen, setManageCategoriesOpen] = useState(false);
+  const [tagCatalog, setTagCatalog] = useState<string[]>([]);
+  const [tagManagerSearch, setTagManagerSearch] = useState("");
+  const [tagManagerNew, setTagManagerNew] = useState("");
+  const [tagManagerEditing, setTagManagerEditing] = useState<string | null>(null);
+  const [tagManagerEditingValue, setTagManagerEditingValue] = useState("");
+  const [tagManagerError, setTagManagerError] = useState<string | null>(null);
+  const [colorMenuOpen, setColorMenuOpen] = useState<string | null>(null);
+  const [colorMenuTarget, setColorMenuTarget] = useState<string | null>(null);
+  const [habitOrder, setHabitOrder] = useState<string[]>([]);
+  const [draggingHabitId, setDraggingHabitId] = useState<string | null>(null);
+  const [draggingOverHabitId, setDraggingOverHabitId] = useState<string | null>(null);
+  const [dragOverPosition, setDragOverPosition] = useState<"before" | "after">("before");
+  const habitsSectionRef = useRef<HTMLDivElement | null>(null);
+  const [shouldScrollToHabits, setShouldScrollToHabits] = useState(false);
   const palette = useMemo(
-    () => ["#22c55e", "#06b6d4", "#a855f7", "#f59e0b", "#ef4444", "#3b82f6", "#10b981"],
+    () => [
+      "#22c55e",
+      "#0ea5e9",
+      "#06b6d4",
+      "#10b981",
+      "#14b8a6",
+      "#38bdf8",
+      "#3b82f6",
+      "#6366f1",
+      "#7c3aed",
+      "#8b5cf6",
+      "#a855f7",
+      "#c084fc",
+      "#d946ef",
+      "#eab308",
+      "#f59e0b",
+      "#f97316",
+      "#f43f5e",
+      "#ef4444",
+      "#84cc16",
+      "#1e293b",
+    ],
     []
   );
 
@@ -81,6 +121,146 @@ export default function Dashboard() {
     [categoryColors, palette]
   );
 
+  const normalizeCategories = useCallback((raw: string | null) => {
+    if (!raw) return [];
+    // Try JSON (new format)
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return Array.from(
+          new Set(
+            parsed
+              .map((item) => (typeof item === "string" ? item : String(item)))
+              .map((item) => item.trim())
+              .filter(Boolean)
+          )
+        );
+      }
+    } catch {
+      // fall through to legacy parsing
+    }
+    // Legacy single category or comma-separated string
+    return Array.from(
+      new Set(
+        raw
+          .split(",")
+          .map((item) => item.trim())
+          .filter(Boolean)
+      )
+    );
+  }, []);
+
+  const serializeCategories = useCallback((categories: string[]) => {
+    const unique = Array.from(new Set(categories.map((c) => c.trim()).filter(Boolean)));
+    return unique.length > 0 ? JSON.stringify(unique) : null;
+  }, []);
+
+  const toggleCategorySelection = useCallback((list: string[], category: string) => {
+    const trimmed = category.trim();
+    if (!trimmed) return list;
+    return list.includes(trimmed) ? list.filter((c) => c !== trimmed) : [...list, trimmed];
+  }, []);
+
+  const addCustomCategoryToNewHabit = useCallback(() => {
+    const trimmed = newCategoryInput.trim();
+    if (!trimmed) return;
+    setNewHabit((prev) => {
+      if (prev.categories.includes(trimmed)) return prev;
+      return { ...prev, categories: [...prev.categories, trimmed] };
+    });
+    setNewCategoryInput("");
+  }, [newCategoryInput]);
+
+  const addCustomCategoryToEditHabit = useCallback(() => {
+    const trimmed = editCategoryInput.trim();
+    if (!trimmed) return;
+    setEditValues((prev) => {
+      if (prev.categories.includes(trimmed)) return prev;
+      return { ...prev, categories: [...prev.categories, trimmed] };
+    });
+    setEditCategoryInput("");
+  }, [editCategoryInput]);
+
+  const normalizeTag = (tag: string) => tag.trim();
+  const tagsMatch = (a: string, b: string) =>
+    a.trim().toLowerCase() === b.trim().toLowerCase();
+  const syncHabitOrder = useCallback(
+    (next: string[]) => {
+      setHabitOrder(next);
+      try {
+        localStorage.setItem("habit-order", JSON.stringify(next));
+      } catch {
+        // ignore storage issues
+      }
+    },
+    [setHabitOrder]
+  );
+
+  const moveHabit = useCallback(
+    (habitId: string, direction: "up" | "down") => {
+      setHabitOrder((prev) => {
+        const base = (prev.length ? prev : habits.map((h) => h.id)).filter(Boolean);
+        const index = base.indexOf(habitId);
+        if (index === -1) return base;
+        const target =
+          direction === "up"
+            ? Math.max(0, index - 1)
+            : Math.min(base.length - 1, index + 1);
+        if (target === index) return base;
+        const next = [...base];
+        [next[index], next[target]] = [next[target], next[index]];
+        syncHabitOrder(next);
+        return next;
+      });
+    },
+    [habits, syncHabitOrder]
+  );
+
+  const reorderHabit = useCallback(
+    (sourceId: string, targetId: string, position: "before" | "after" = "before") => {
+      if (!sourceId || !targetId || sourceId === targetId) return;
+      setHabitOrder((prev) => {
+        const base = (prev.length ? prev : habits.map((h) => h.id)).filter(Boolean);
+        const srcIndex = base.indexOf(sourceId);
+        const targetIndex = base.indexOf(targetId);
+        if (srcIndex === -1 || targetIndex === -1) return base;
+        const next = [...base];
+        next.splice(srcIndex, 1);
+        const insertAt = Math.min(
+          next.length,
+          position === "after" ? targetIndex + (srcIndex < targetIndex ? 0 : 1) : targetIndex
+        );
+        next.splice(insertAt, 0, sourceId);
+        syncHabitOrder(next);
+        return next;
+      });
+    },
+    [habits, syncHabitOrder]
+  );
+
+  const loadTagCatalog = useCallback(() => {
+    try {
+      const stored = localStorage.getItem("habit-tag-catalog");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          setTagCatalog(
+            Array.from(
+              new Set(
+                parsed
+                  .map((t) => (typeof t === "string" ? t : String(t)))
+                  .map((t) => t.trim())
+                  .filter(Boolean)
+              )
+            )
+          );
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
   const calendarMeta = useMemo(() => {
     const viewYear = viewDate.getUTCFullYear();
     const viewMonth = viewDate.getUTCMonth();
@@ -103,7 +283,7 @@ export default function Dashboard() {
 
   const { daysInMonth, firstDayOffset, viewYear, viewMonth, monthLabel } = calendarMeta;
 
-  // Hydrate category colors from localStorage
+  // Hydrate tag colors from localStorage
   useEffect(() => {
     try {
       const stored = localStorage.getItem("habit-category-colors");
@@ -115,6 +295,10 @@ export default function Dashboard() {
       // ignore
     }
   }, []);
+
+  useEffect(() => {
+    loadTagCatalog();
+  }, [loadTagCatalog]);
 
   // Load user, habits, and logs for the current month
   useEffect(() => {
@@ -137,13 +321,65 @@ export default function Dashboard() {
         .select("*")
         .eq("user_id", userData.user.id);
 
-      setHabits(habitsData || []);
+      setHabits(
+        (habitsData || []).map((habit) => ({
+          ...habit,
+          categories: normalizeCategories(habit.category),
+        }))
+      );
       setLogs(logsData || []);
       setLoading(false);
     };
 
     loadData();
-  }, [router, supabase]);
+  }, [normalizeCategories, router, supabase]);
+
+  // Scroll toward the habits section after adding a new habit so filters stay in view
+  useEffect(() => {
+    if (!shouldScrollToHabits || !habitsSectionRef.current) return;
+    const offset = 80; // leave a bit of space above so filters stay visible
+    const target =
+      habitsSectionRef.current.getBoundingClientRect().top + window.scrollY - offset;
+    window.scrollTo({ top: Math.max(target, 0), behavior: "smooth" });
+    const timeout = window.setTimeout(() => setShouldScrollToHabits(false), 400);
+    return () => window.clearTimeout(timeout);
+  }, [shouldScrollToHabits]);
+
+  // Hydrate habit order from localStorage
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("habit-order");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          const normalized = parsed.map((id) => String(id)).filter(Boolean);
+          setHabitOrder(normalized);
+        }
+      }
+    } catch {
+      // ignore storage errors
+    }
+  }, []);
+
+  // Keep habit order in sync with current habits list
+  useEffect(() => {
+    if (habits.length === 0) return;
+    setHabitOrder((prev) => {
+      const ids = habits.map((h) => h.id);
+      const existing = prev.filter((id) => ids.includes(id));
+      const missing = ids.filter((id) => !existing.includes(id));
+      const next = [...existing, ...missing];
+      const unchanged =
+        next.length === prev.length && next.every((id, idx) => id === prev[idx]);
+      if (unchanged) return prev;
+      try {
+        localStorage.setItem("habit-order", JSON.stringify(next));
+      } catch {
+        // ignore storage issues
+      }
+      return next;
+    });
+  }, [habits]);
 
   const addHabit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -153,10 +389,14 @@ export default function Dashboard() {
       user_id: user.id,
       name: newHabit.name,
       description: newHabit.description,
-      category: newHabit.category || null,
+      category: serializeCategories(newHabit.categories),
     };
 
-    const { error: insertError } = await supabase.from("habits").insert([payload]);
+    const { error: insertError } = await supabase
+      .from("habits")
+      .insert([payload])
+      .select()
+      .single();
 
     if (insertError) {
       const message = insertError.message || "Unable to add habit.";
@@ -165,13 +405,20 @@ export default function Dashboard() {
       return;
     }
 
-    setNewHabit({ name: "", description: "", category: "" });
+    setNewHabit({ name: "", description: "", categories: [] });
+    setNewCategoryInput("");
     const { data: updated } = await supabase
       .from("habits")
       .select("*")
       .eq("user_id", user.id)
       .order("created_at", { ascending: false });
-    setHabits(updated || []);
+    setHabits(
+      (updated || []).map((habit) => ({
+        ...habit,
+        categories: normalizeCategories(habit.category),
+      }))
+    );
+    setShouldScrollToHabits(true);
   };
 
   const deleteHabit = async (id: string) => {
@@ -204,6 +451,32 @@ export default function Dashboard() {
         ])
         .select();
       if (!error && data) setLogs((prev) => [...prev, data[0]]);
+    }
+  };
+
+  const toggleHabitOnDate = async (habitId: string, date: string) => {
+    if (!user) return;
+    if (date > today) return; // prevent logging future dates
+
+    const existing = logs.find((l) => l.habit_id === habitId && l.date === date);
+    if (existing) {
+      await supabase.from("habit_logs").delete().eq("id", existing.id);
+      setLogs((prev) => prev.filter((l) => l.id !== existing.id));
+    } else {
+      const { data, error } = await supabase
+        .from("habit_logs")
+        .insert([
+          {
+            user_id: user.id,
+            habit_id: habitId,
+            date,
+            completed: true,
+          },
+        ])
+        .select();
+      if (!error && data) {
+        setLogs((prev) => [...prev, data[0]]);
+      }
     }
   };
 
@@ -369,22 +642,23 @@ export default function Dashboard() {
   );
 
   const { categoryOptions, hasUncategorized } = useMemo(() => {
-    const set = new Set<string>();
+    const set = new Set<string>(tagCatalog.map((t) => t.trim()).filter(Boolean));
     let uncategorized = false;
     habits.forEach((habit) => {
-      const value = (habit.category || "").trim();
-      if (value) set.add(value);
-      else uncategorized = true;
+      if (!habit.categories || habit.categories.length === 0) {
+        uncategorized = true;
+        return;
+      }
+      habit.categories.forEach((category) => {
+        const value = category.trim();
+        if (value) set.add(value);
+      });
     });
     return {
       categoryOptions: Array.from(set).sort((a, b) => a.localeCompare(b)),
       hasUncategorized: uncategorized,
     };
-  }, [habits]);
-
-  const newCategoryIsCustom =
-    newCategoryMode === "custom" ||
-    (newHabit.category && !categoryOptions.includes(newHabit.category));
+  }, [habits, tagCatalog]);
 
   // Keep category color map in sync with current categories and store in localStorage
   useEffect(() => {
@@ -423,6 +697,14 @@ export default function Dashboard() {
       // ignore
     }
   }, [categoryColors]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("habit-tag-catalog", JSON.stringify(tagCatalog));
+    } catch {
+      // ignore
+    }
+  }, [tagCatalog]);
 
   const logsByHabit = useMemo(() => {
     const map: Record<string, Set<string>> = {};
@@ -492,8 +774,8 @@ export default function Dashboard() {
 
     const applyCategory = (habit: Habit) => {
       if (categoryFilter === "all") return true;
-      if (categoryFilter === "uncategorized") return !habit.category;
-      return habit.category === categoryFilter;
+      if (categoryFilter === "uncategorized") return !habit.categories?.length;
+      return habit.categories?.includes(categoryFilter);
     };
 
     const categoryFiltered = base.filter(applyCategory);
@@ -504,10 +786,24 @@ export default function Dashboard() {
     return categoryFiltered.filter((habit) => {
       const nameMatch = habit.name.toLowerCase().includes(query);
       const descMatch = (habit.description || "").toLowerCase().includes(query);
-      const categoryMatch = (habit.category || "").toLowerCase().includes(query);
+      const categoryMatch = (habit.categories || [])
+        .join(" ")
+        .toLowerCase()
+        .includes(query);
       return nameMatch || descMatch || categoryMatch;
     });
   }, [categoryFilter, habitFilter, habitQuery, habits, isCompleted]);
+
+  const orderedFilteredHabits = useMemo(() => {
+    if (filteredHabits.length === 0) return [];
+    return filteredHabits.slice().sort((a, b) => {
+      const aIndex = habitOrder.indexOf(a.id);
+      const bIndex = habitOrder.indexOf(b.id);
+      const aOrder = aIndex === -1 ? Number.MAX_SAFE_INTEGER : aIndex;
+      const bOrder = bIndex === -1 ? Number.MAX_SAFE_INTEGER : bIndex;
+      return aOrder - bOrder;
+    });
+  }, [filteredHabits, habitOrder]);
 
   const toggleAllToday = async () => {
     if (!user || habits.length === 0) return;
@@ -546,16 +842,15 @@ export default function Dashboard() {
     setEditValues({
       name: habit.name,
       description: habit.description || "",
-      category: habit.category || "",
+      categories: habit.categories || [],
     });
-    const inList = habit.category ? categoryOptions.includes(habit.category) : false;
-    setEditCategoryMode(inList ? "list" : "custom");
+    setEditCategoryInput("");
   };
 
   const cancelEditingHabit = () => {
     setEditingHabitId(null);
-    setEditValues({ name: "", description: "", category: "" });
-    setEditCategoryMode("list");
+    setEditValues({ name: "", description: "", categories: [] });
+    setEditCategoryInput("");
   };
 
   const saveHabitEdits = async () => {
@@ -564,7 +859,7 @@ export default function Dashboard() {
     const payload = {
       name: editValues.name.trim(),
       description: editValues.description.trim() || null,
-      category: editValues.category.trim() || null,
+      category: serializeCategories(editValues.categories),
     };
 
     const { error: updateError } = await supabase
@@ -577,13 +872,183 @@ export default function Dashboard() {
       return;
     }
 
+    const updatedCategories = normalizeCategories(payload.category);
     setHabits((prev) =>
       prev.map((habit) =>
-        habit.id === editingHabitId ? { ...habit, ...payload } : habit
+        habit.id === editingHabitId
+          ? { ...habit, ...payload, categories: updatedCategories }
+          : habit
       )
     );
     cancelEditingHabit();
   };
+
+  const getNextPaletteColor = useCallback(() => {
+    const used = new Set(
+      Object.values(categoryColors).map((c) => c.toLowerCase())
+    );
+    const firstUnused = palette.find(
+      (c) => !used.has(c.toLowerCase())
+    );
+    if (firstUnused) return firstUnused;
+    return palette[used.size % palette.length];
+  }, [categoryColors, palette]);
+
+  const upsertTagColor = (tag: string) => {
+    setCategoryColors((prev) => {
+      if (prev[tag]) return prev;
+      const color = getNextPaletteColor();
+      const next = { ...prev, [tag]: color };
+      try {
+        localStorage.setItem("habit-category-colors", JSON.stringify(next));
+      } catch {
+        // ignore storage errors
+      }
+      return next;
+    });
+  };
+
+  const createTag = (tag: string) => {
+    const trimmed = normalizeTag(tag);
+    if (!trimmed) {
+      setTagManagerError("Enter a tag name to create.");
+      return;
+    }
+    if (categoryOptions.some((tag) => tagsMatch(tag, trimmed))) {
+      setTagManagerError("That tag already exists.");
+      return;
+    }
+    setTagCatalog((prev) => {
+      if (prev.some((tag) => tagsMatch(tag, trimmed))) return prev;
+      return [...prev, trimmed];
+    });
+    upsertTagColor(trimmed);
+    setTagManagerError(null);
+  };
+
+  const removeTag = async (tag: string) => {
+    const trimmed = normalizeTag(tag);
+    if (!trimmed) return;
+    const matchesTag = (value: string) => tagsMatch(value, trimmed);
+    const affectedHabits = habits.filter((h) => h.categories?.some(matchesTag));
+    const updatedHabits = habits.map((habit) => {
+      if (!habit.categories?.some(matchesTag)) return habit;
+      const nextCats = habit.categories.filter((c) => !matchesTag(c));
+      return { ...habit, categories: nextCats };
+    });
+    setHabits(updatedHabits);
+    setTagCatalog((prev) => prev.filter((t) => !tagsMatch(t, trimmed)));
+    setCategoryColors((prev) => {
+      const next = { ...prev };
+      const key = Object.keys(next).find((k) => tagsMatch(k, trimmed));
+      if (key) delete next[key];
+      return next;
+    });
+
+    // Persist removals to DB for affected habits
+    if (affectedHabits.length > 0 && user) {
+      const updates = affectedHabits.map((habit) => {
+        const nextCats = habit.categories.filter((c) => !matchesTag(c));
+        return supabase
+          .from("habits")
+          .update({ category: serializeCategories(nextCats) })
+          .eq("id", habit.id);
+      });
+      const results = await Promise.all(updates);
+      const hasError = results.some((r) => r.error);
+      if (hasError) {
+        setTagManagerError("Some habits could not be updated when removing this tag.");
+        console.error("Error removing tag from habits", results.map((r) => r.error).filter(Boolean));
+      }
+    }
+  };
+
+  const renameTag = async (oldTag: string, newTag: string) => {
+    const oldTrimmed = normalizeTag(oldTag);
+    const newTrimmed = normalizeTag(newTag);
+    if (!oldTrimmed || !newTrimmed) {
+      setTagManagerEditing(null);
+      setTagManagerEditingValue("");
+      return;
+    }
+    if (
+      categoryOptions.some(
+        (tag) => tagsMatch(tag, newTrimmed) && !tagsMatch(tag, oldTrimmed)
+      )
+    ) {
+      setTagManagerError("That tag name already exists.");
+      return;
+    }
+
+    const updatedColorMap = { ...categoryColors };
+    const existingColorKey = Object.keys(updatedColorMap).find((key) =>
+      tagsMatch(key, oldTrimmed)
+    );
+    if (existingColorKey) {
+      updatedColorMap[newTrimmed] = updatedColorMap[existingColorKey];
+      delete updatedColorMap[existingColorKey];
+    }
+
+    const updatedTagCatalog = tagCatalog.map((t) =>
+      tagsMatch(t, oldTrimmed) ? newTrimmed : t
+    );
+    const updatedHabits = habits.map((habit) => {
+      if (!habit.categories?.some((cat) => tagsMatch(cat, oldTrimmed))) return habit;
+      const nextCats = habit.categories.map((c) =>
+        tagsMatch(c, oldTrimmed) ? newTrimmed : c
+      );
+      return { ...habit, categories: nextCats };
+    });
+
+    setTagCatalog(updatedTagCatalog);
+    setCategoryColors(updatedColorMap);
+    setHabits(updatedHabits);
+    setTagManagerEditing(null);
+    setTagManagerEditingValue("");
+    setTagManagerError(null);
+
+    // Persist changes to DB
+    if (user) {
+      const affected = habits.filter((h) =>
+        h.categories?.some((cat) => tagsMatch(cat, oldTrimmed))
+      );
+      if (affected.length > 0) {
+        const updates = affected.map((habit) => {
+          const nextCats = habit.categories.map((c) =>
+            tagsMatch(c, oldTrimmed) ? newTrimmed : c
+          );
+          return supabase
+            .from("habits")
+            .update({ category: serializeCategories(nextCats) })
+            .eq("id", habit.id);
+        });
+        const results = await Promise.all(updates);
+        const hasError = results.some((r) => r.error);
+        if (hasError) {
+          setTagManagerError("Some habits could not be updated when renaming this tag.");
+          console.error("Error renaming tag", results.map((r) => r.error).filter(Boolean));
+        }
+      }
+    }
+  };
+
+  const filteredManagerTags = useMemo(() => {
+    if (!tagManagerSearch.trim()) return categoryOptions;
+    const query = tagManagerSearch.toLowerCase();
+    return categoryOptions.filter((tag) => tag.toLowerCase().includes(query));
+  }, [categoryOptions, tagManagerSearch]);
+
+  const tagUsageCount = useMemo(() => {
+    const counts: Record<string, number> = {};
+    habits.forEach((habit) => {
+      (habit.categories || []).forEach((category) => {
+        const key = category.trim();
+        if (!key) return;
+        counts[key] = (counts[key] || 0) + 1;
+      });
+    });
+    return counts;
+  }, [habits]);
 
   if (loading) {
     return (
@@ -683,27 +1148,28 @@ export default function Dashboard() {
                   <button
                     type="button"
                     onClick={() => {
-                      setNewCategoryMode("list");
-                      setNewHabit((prev) => ({ ...prev, category: "" }));
+                      setNewHabit((prev) => ({ ...prev, categories: [] }));
                     }}
                     className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${
-                      !newCategoryIsCustom && newHabit.category === ""
+                      newHabit.categories.length === 0
                         ? "border-emerald-400 bg-emerald-500/20 text-emerald-100"
                         : "border-white/15 bg-white/5 text-slate-100 hover:bg-white/10"
                     }`}
                   >
-                    Uncategorized
+                    Untagged
                   </button>
                   {categoryOptions.map((option) => (
                     <button
                       key={option}
                       type="button"
                       onClick={() => {
-                        setNewCategoryMode("list");
-                        setNewHabit((prev) => ({ ...prev, category: option }));
+                        setNewHabit((prev) => ({
+                          ...prev,
+                          categories: toggleCategorySelection(prev.categories, option),
+                        }));
                       }}
                       className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${
-                        newHabit.category === option
+                        newHabit.categories.includes(option)
                           ? "border-emerald-400 bg-emerald-500/20 text-emerald-100"
                           : "border-white/15 bg-white/5 text-slate-100 hover:bg-white/10"
                       }`}
@@ -711,39 +1177,58 @@ export default function Dashboard() {
                       {option}
                     </button>
                   ))}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setNewCategoryMode("custom");
-                      setNewHabit((prev) => ({ ...prev, category: "" }));
-                    }}
-                    className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${
-                      newCategoryIsCustom
-                        ? "border-emerald-400 bg-emerald-500/20 text-emerald-100"
-                        : "border-white/15 bg-white/5 text-slate-100 hover:bg-white/10"
-                    }`}
-                  >
-                    + New category
-                  </button>
                 </div>
-                {newCategoryIsCustom && (
+                <div className="flex items-center gap-2">
                   <input
                     type="text"
-                    placeholder="Custom category"
-                    value={newHabit.category}
-                    onChange={(e) =>
-                      setNewHabit((prev) => ({
-                        ...prev,
-                        category: e.target.value,
-                      }))
-                    }
-                    className="w-full rounded-lg border border-white/10 bg-white/10 p-3 text-sm text-white placeholder:text-slate-400 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
+                    placeholder="Create new tag (press Enter)"
+                    value={newCategoryInput}
+                    onChange={(e) => setNewCategoryInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        addCustomCategoryToNewHabit();
+                      }
+                    }}
+                    className="flex-1 rounded-lg border border-white/10 bg-white/10 p-3 text-sm text-white placeholder:text-slate-400 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
                   />
+                  <button
+                    type="button"
+                    onClick={addCustomCategoryToNewHabit}
+                    className="inline-flex min-w-[110px] h-[45px] items-center justify-center rounded-lg border border-white/15 bg-white/10 px-4 text-xs font-semibold text-white transition hover:bg-white/15"
+                  >
+                    + Create tag
+                  </button>
+                </div>
+                {newHabit.categories.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {newHabit.categories.map((cat) => (
+                      <span
+                        key={cat}
+                        className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-semibold text-slate-100"
+                      >
+                        <span>{cat}</span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setNewHabit((prev) => ({
+                              ...prev,
+                              categories: prev.categories.filter((c) => c !== cat),
+                            }))
+                          }
+                          className="text-[11px] text-slate-300 hover:text-rose-300"
+                          aria-label={`Remove ${cat}`}
+                        >
+                          x
+                        </button>
+                      </span>
+                    ))}
+                  </div>
                 )}
               </div>
               <button
                 type="submit"
-                className="w-full rounded-lg bg-emerald-500 px-4 py-3 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:bg-emerald-400 hover:shadow-lg hover:shadow-emerald-500/30"
+                className="w-full rounded-lg bg-emerald-500 px-4 py-3 text-sm font-semibold text-slate-900 transition hover:-translate-y-0.5 hover:bg-emerald-400 hover:shadow-lg hover:shadow-emerald-500/30"
               >
                 Add Habit
               </button>
@@ -837,7 +1322,10 @@ export default function Dashboard() {
           </section>
         </div>
 
-        <section className="rounded-2xl border border-white/10 bg-white/5 p-6 shadow-2xl shadow-slate-900/40 backdrop-blur">
+        <section
+          ref={habitsSectionRef}
+          className="rounded-2xl border border-white/10 bg-white/5 p-6 shadow-2xl shadow-slate-900/40 backdrop-blur"
+        >
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <p className="text-xs uppercase tracking-wide text-slate-400">Your habits</p>
@@ -847,14 +1335,14 @@ export default function Dashboard() {
             </div>
             <div className="flex w-full flex-col items-start gap-2 sm:items-end">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="rounded-full bg-amber-500/15 px-3 py-1 text-xs font-semibold text-amber-200">
+                <span className="flex h-6 items-center rounded-full bg-amber-500/15 px-3 text-xs font-semibold text-amber-200">
                   {overview.completedToday}/{overview.total || 0} today
                 </span>
-                <div className="flex items-center gap-1 rounded-full bg-white/10 p-1 text-xs font-semibold text-slate-100">
+                <div className="flex h-6 items-center gap-1 rounded-full bg-white/10 p-1 text-xs font-semibold text-slate-100">
                   <button
                     type="button"
                     onClick={() => setHabitFilter("all")}
-                    className={`rounded-full px-2 py-1 transition ${
+                    className={`h-full rounded-full px-3 transition ${
                       habitFilter === "all" ? "bg-white/30 text-slate-900" : "hover:bg-white/15"
                     }`}
                   >
@@ -863,7 +1351,7 @@ export default function Dashboard() {
                   <button
                     type="button"
                     onClick={() => setHabitFilter("pending")}
-                    className={`rounded-full px-2 py-1 transition ${
+                    className={`h-full rounded-full px-3 transition ${
                       habitFilter === "pending" ? "bg-white/30 text-slate-900" : "hover:bg-white/15"
                     }`}
                   >
@@ -872,26 +1360,26 @@ export default function Dashboard() {
                   <button
                     type="button"
                     onClick={() => setHabitFilter("completed")}
-                    className={`rounded-full px-2 py-1 transition ${
+                    className={`h-full rounded-full px-3 transition ${
                       habitFilter === "completed" ? "bg-white/30 text-slate-900" : "hover:bg-white/15"
                     }`}
                   >
                     Done
                   </button>
                 </div>
-                <div className="flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs text-slate-100 shadow-sm">
+                <div className="flex h-6 items-center gap-2 rounded-full border border-white/10 bg-white/10 px-3 text-xs text-white transition focus-within:border-emerald-400/70 focus-within:ring-2 focus-within:ring-emerald-400/40">
                   <input
                     type="text"
                     value={habitQuery}
                     onChange={(e) => setHabitQuery(e.target.value)}
                     placeholder="Search habits..."
-                    className="w-40 bg-transparent text-sm text-white placeholder:text-slate-400 focus:outline-none"
+                    className="h-full w-56 bg-transparent text-sm text-white placeholder:text-slate-400 focus:outline-none"
                   />
                   {habitQuery && (
                     <button
                       type="button"
                       onClick={() => setHabitQuery("")}
-                      className="rounded-full bg-white/20 px-2 py-0.5 text-[11px] font-semibold hover:bg-white/30"
+                      className="rounded-md border border-white/15 bg-white/10 px-2 py-0.5 text-[11px] font-semibold text-white hover:bg-white/15"
                     >
                       Clear
                     </button>
@@ -901,10 +1389,10 @@ export default function Dashboard() {
                   type="button"
                   onClick={toggleAllToday}
                   disabled={habits.length === 0}
-                  className={`rounded-full px-3 py-1 text-xs font-semibold text-white shadow-sm transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                  className={`flex h-6 items-center rounded-full px-3 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
                     allCompletedToday
-                      ? "bg-slate-600 hover:bg-slate-500"
-                      : "bg-emerald-500 shadow-emerald-500/30 hover:bg-emerald-400"
+                      ? "bg-slate-600 text-white hover:bg-slate-500"
+                      : "bg-emerald-500 text-slate-900 shadow-emerald-500/30 hover:bg-emerald-400"
                   }`}
                 >
                   {allCompletedToday ? "Unmark all for today" : "Mark all done today"}
@@ -912,7 +1400,7 @@ export default function Dashboard() {
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-[11px] uppercase tracking-wide text-slate-400">Categories</span>
+                <span className="text-[11px] uppercase tracking-wide text-slate-400">Tags</span>
                 <button
                   type="button"
                   onClick={() => setCategoryFilter("all")}
@@ -934,7 +1422,7 @@ export default function Dashboard() {
                         : "border-white/15 bg-white/5 text-slate-100 hover:bg-white/10"
                     }`}
                   >
-                    Uncategorized
+                    Untagged
                   </button>
                 )}
                 {categoryOptions.map((option) => (
@@ -956,7 +1444,7 @@ export default function Dashboard() {
                   onClick={() => setManageCategoriesOpen(true)}
                   className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs font-semibold text-slate-100 transition hover:bg-white/10"
                 >
-                  Manage colors
+                  Manage tags
                 </button>
               </div>
             </div>
@@ -969,20 +1457,16 @@ export default function Dashboard() {
             </p>
           ) : (
             <ul className="space-y-3">
-              {filteredHabits.length === 0 && (
+              {orderedFilteredHabits.length === 0 && (
                 <li className="text-center text-slate-300">
                   No habits match the current filters/search.
                 </li>
               )}
-              {filteredHabits.map((habit) => {
+              {orderedFilteredHabits.map((habit) => {
                 const settings = getCompletionSetting(habit.id);
                 const completedToday = isCompleted(habit.id);
                 const isEditing = editingHabitId === habit.id;
-                const editCategoryIsCustom =
-                  isEditing &&
-                  (editCategoryMode === "custom" ||
-                    (editValues.category &&
-                      !categoryOptions.includes(editValues.category)));
+                const orderIndex = habitOrder.indexOf(habit.id);
                 const msPerDay = 24 * 60 * 60 * 1000;
                 const createdDate = normalizeIso(habit.created_at);
                 const todayDate = normalizeIso(today);
@@ -1005,8 +1489,62 @@ export default function Dashboard() {
                 return (
                   <li
                     key={habit.id}
-                    className="flex flex-col gap-4 rounded-xl border border-white/10 bg-linear-to-r from-white/5 via-white/10 to-white/5 p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg hover:shadow-emerald-500/10"
+                    draggable={false}
+                    onDragEnter={(e) => {
+                      e.preventDefault();
+                      if (draggingHabitId && draggingHabitId !== habit.id) {
+                        setDraggingOverHabitId(habit.id);
+                      }
+                    }}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      if (draggingHabitId && draggingHabitId !== habit.id) {
+                        const rect = (e.currentTarget as HTMLLIElement).getBoundingClientRect();
+                        const position =
+                          e.clientY > rect.top + rect.height / 2 ? "after" : "before";
+                        setDragOverPosition(position);
+                        setDraggingOverHabitId(habit.id);
+                      }
+                    }}
+                    onDrop={() => {
+                      if (draggingHabitId && draggingOverHabitId) {
+                        reorderHabit(draggingHabitId, draggingOverHabitId, dragOverPosition);
+                      }
+                      setDraggingHabitId(null);
+                      setDraggingOverHabitId(null);
+                      setDragOverPosition("before");
+                    }}
+                    onDragEnd={() => {
+                      setDraggingHabitId(null);
+                      setDraggingOverHabitId(null);
+                      setDragOverPosition("before");
+                    }}
+                    onDragLeave={(e) => {
+                      const currentTarget = e.currentTarget;
+                      const related = e.relatedTarget as Node | null;
+                      if (related && currentTarget.contains(related)) return;
+                      if (draggingOverHabitId === habit.id) {
+                        setDraggingOverHabitId(null);
+                        setDragOverPosition("before");
+                      }
+                    }}
+                    className={`relative flex flex-col gap-4 rounded-xl border bg-linear-to-r from-white/5 via-white/10 to-white/5 p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg hover:shadow-emerald-500/10 ${
+                      draggingOverHabitId === habit.id && draggingHabitId !== habit.id
+                        ? "border-emerald-400/70"
+                        : "border-white/10"
+                    } ${draggingHabitId === habit.id ? "opacity-70" : ""}`}
                   >
+                    {draggingHabitId &&
+                      draggingOverHabitId === habit.id &&
+                      draggingHabitId !== habit.id && (
+                        <div
+                          className={`pointer-events-none absolute left-0 right-0 ${
+                            dragOverPosition === "after" ? "bottom-0" : "top-0"
+                          } flex justify-center`}
+                        >
+                          <div className="h-1 w-[96%] max-w-full rounded-full bg-emerald-400/70 shadow shadow-emerald-500/40" />
+                        </div>
+                      )}
                     <div className="flex items-start justify-between gap-3">
                       <div className="space-y-2 w-full">
                         {isEditing ? (
@@ -1030,64 +1568,92 @@ export default function Dashboard() {
                               className="w-full rounded-lg border border-white/10 bg-white/10 p-2 text-sm text-white placeholder:text-slate-400 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
                               placeholder="Description"
                             />
-                            <select
-                              value={
-                                editCategoryIsCustom
-                                  ? ""
-                                  : editValues.category
-                              }
-                              onChange={(e) => {
-                                const value = e.target.value;
-                                setEditCategoryMode("list");
-                                setEditValues((prev) => ({ ...prev, category: value }));
-                              }}
-                              className="w-full rounded-lg border border-white/15 bg-white/10 p-2 text-sm text-white focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
-                              style={{ colorScheme: "dark" }}
-                            >
-                              <option value="" disabled hidden>
-                                Select category
-                              </option>
-                              <option value="">Uncategorized</option>
-                              {categoryOptions.map((option) => (
-                                <option key={option} value={option}>
-                                  {option}
-                                </option>
-                              ))}
-                            </select>
-                            <div className="flex flex-wrap gap-2">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setEditCategoryMode("custom");
-                                  setEditValues((prev) => ({ ...prev, category: "" }));
-                                }}
-                                className="inline-flex items-center justify-center rounded-lg border border-white/15 px-3 py-1.5 text-xs font-semibold text-slate-100 bg-white/5 hover:bg-white/10 transition"
-                              >
-                                + New category
-                              </button>
-                              {editCategoryIsCustom && (
+                            <div className="space-y-2">
+                              <div className="flex flex-wrap gap-2">
                                 <button
                                   type="button"
-                                  onClick={() => setEditCategoryMode("list")}
-                                  className="inline-flex items-center justify-center rounded-lg border border-white/10 px-3 py-1.5 text-xs font-semibold text-slate-200 bg-white/5 hover:bg-white/10 transition"
+                                  onClick={() =>
+                                    setEditValues((prev) => ({ ...prev, categories: [] }))
+                                  }
+                                  className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${
+                                    editValues.categories.length === 0
+                                      ? "border-emerald-400 bg-emerald-500/20 text-emerald-100"
+                                      : "border-white/15 bg-white/5 text-slate-100 hover:bg-white/10"
+                                  }`}
                                 >
-                                  Use existing
+                                  Untagged
                                 </button>
+                                {categoryOptions.map((option) => (
+                                  <button
+                                    key={option}
+                                    type="button"
+                                    onClick={() =>
+                                      setEditValues((prev) => ({
+                                        ...prev,
+                                        categories: toggleCategorySelection(
+                                          prev.categories,
+                                          option
+                                        ),
+                                      }))
+                                    }
+                                    className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${
+                                      editValues.categories.includes(option)
+                                        ? "border-emerald-400 bg-emerald-500/20 text-emerald-100"
+                                        : "border-white/15 bg-white/5 text-slate-100 hover:bg-white/10"
+                                    }`}
+                                  >
+                                    {option}
+                                  </button>
+                                ))}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="text"
+                                  placeholder="Create new tag (press Enter)"
+                                  value={editCategoryInput}
+                                  onChange={(e) => setEditCategoryInput(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") {
+                                      e.preventDefault();
+                                      addCustomCategoryToEditHabit();
+                                    }
+                                  }}
+                                  className="flex-1 rounded-lg border border-white/10 bg-white/10 p-2 text-sm text-white placeholder:text-slate-400 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={addCustomCategoryToEditHabit}
+                                  className="inline-flex min-w-[110px] h-[52px] items-center justify-center rounded-lg border border-white/15 bg-white/10 px-4 text-xs font-semibold text-white transition hover:bg-white/15"
+                                >
+                                  + Create tag
+                                </button>
+                              </div>
+                              {editValues.categories.length > 0 && (
+                                <div className="flex flex-wrap gap-2">
+                                  {editValues.categories.map((cat) => (
+                                    <span
+                                      key={cat}
+                                      className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-semibold text-slate-100"
+                                    >
+                                      <span>{cat}</span>
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          setEditValues((prev) => ({
+                                            ...prev,
+                                            categories: prev.categories.filter((c) => c !== cat),
+                                          }))
+                                        }
+                                        className="text-[11px] text-slate-300 hover:text-rose-300"
+                                        aria-label={`Remove ${cat}`}
+                                      >
+                                        x
+                                      </button>
+                                    </span>
+                                  ))}
+                                </div>
                               )}
                             </div>
-                            {editCategoryIsCustom && (
-                              <input
-                                value={editValues.category}
-                                onChange={(e) =>
-                                  setEditValues((prev) => ({
-                                    ...prev,
-                                    category: e.target.value,
-                                  }))
-                                }
-                                className="w-full rounded-lg border border-white/10 bg-white/10 p-2 text-sm text-white placeholder:text-slate-400 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
-                                placeholder="Custom category"
-                              />
-                            )}
                           </div>
                         ) : (
                           <div className="space-y-1">
@@ -1106,19 +1672,24 @@ export default function Dashboard() {
                                     : "bg-sky-500/15 text-sky-200 border border-sky-300/30"
                                 }`}
                               >
-                      {completedToday ? "Done today" : "Pending"}
-                    </span>
-                    {habit.category && (
-                      <span
-                        className="rounded-full px-2.5 py-0.5 text-[11px] font-semibold text-slate-900"
-                        style={{
-                          backgroundColor: getCategoryColor(habit.category),
-                        }}
-                      >
-                        {habit.category}
-                      </span>
-                    )}
-                  </div>
+                                {completedToday ? "Done today" : "Pending"}
+                              </span>
+                              {habit.categories?.length > 0 && (
+                                <div className="flex flex-wrap gap-2">
+                                  {habit.categories.map((cat) => (
+                                    <span
+                                      key={cat}
+                                      className="rounded-full px-2.5 py-0.5 text-[11px] font-semibold text-slate-900"
+                                      style={{
+                                        backgroundColor: getCategoryColor(cat),
+                                      }}
+                                    >
+                                      {cat}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
                             {habit.description && (
                               <p className="text-sm text-slate-200">{habit.description}</p>
                             )}
@@ -1148,6 +1719,47 @@ export default function Dashboard() {
                       </div>
 
                       <div className="flex flex-col items-end gap-2 text-xs font-semibold text-slate-200">
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            aria-label={`Move ${habit.name} up`}
+                            onClick={() => moveHabit(habit.id, "up")}
+                            disabled={orderIndex <= 0}
+                            className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] font-semibold text-slate-100 shadow-sm transition hover:-translate-y-0.5 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            ↑
+                          </button>
+                          <button
+                            type="button"
+                            aria-label={`Move ${habit.name} down`}
+                            onClick={() => moveHabit(habit.id, "down")}
+                            disabled={
+                              orderIndex === -1 || orderIndex >= orderedFilteredHabits.length - 1
+                            }
+                            className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] font-semibold text-slate-100 shadow-sm transition hover:-translate-y-0.5 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            ↓
+                          </button>
+                          <button
+                            type="button"
+                            draggable
+                            onDragStart={(e) => {
+                              setDraggingHabitId(habit.id);
+                              setDraggingOverHabitId(habit.id);
+                              setDragOverPosition("before");
+                              e.dataTransfer.effectAllowed = "move";
+                              e.dataTransfer.setData("text/plain", habit.id);
+                            }}
+                            onDragEnd={() => {
+                              setDraggingHabitId(null);
+                              setDraggingOverHabitId(null);
+                              setDragOverPosition("before");
+                            }}
+                            className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] font-semibold text-slate-100 shadow-sm transition hover:-translate-y-0.5 hover:bg-white/10"
+                          >
+                            ⇅
+                          </button>
+                        </div>
                         <span className="rounded-full bg-white/10 px-3 py-1">
                           Streak: {stats.streak} day{stats.streak === 1 ? "" : "s"}
                         </span>
@@ -1265,7 +1877,7 @@ export default function Dashboard() {
                             <>
                               <button
                                 onClick={saveHabitEdits}
-                                className="rounded-md bg-emerald-500 px-3 py-1 text-sm font-medium text-white transition hover:bg-emerald-400"
+                                className="rounded-md bg-emerald-500 px-3 py-1 text-sm font-medium text-slate-900 transition hover:bg-emerald-400"
                               >
                                 Save
                               </button>
@@ -1280,10 +1892,10 @@ export default function Dashboard() {
                             <>
                               <button
                                 onClick={() => toggleHabit(habit.id)}
-                                className={`px-3 py-1 rounded-md text-white text-sm font-medium transition ${
+                                className={`px-3 py-1 rounded-md text-sm font-semibold transition ${
                                   completedToday
-                                    ? "bg-emerald-500 hover:bg-emerald-400"
-                                    : "bg-sky-500 hover:bg-sky-400"
+                                    ? "border border-emerald-400/60 bg-emerald-500/20 text-emerald-100 hover:bg-emerald-500/30"
+                                    : "border border-emerald-500/70 bg-emerald-400 text-emerald-950 hover:bg-emerald-300"
                                 }`}
                               >
                                 {completedToday ? "Unmark" : "Mark done"}
@@ -1393,28 +2005,48 @@ export default function Dashboard() {
                 {selectedDayHabits.map(({ habit, done }) => (
                   <li
                     key={habit.id}
-                    className="flex items-center justify-between rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-100"
+                    className="flex items-center justify-between rounded-lg border border-white/10 bg-white/5 px-3 py-3 text-sm text-slate-100"
                   >
                     <div className="flex flex-col">
-                      <span className="font-semibold">{habit.name}</span>
+                      <span className="font-semibold text-white">{habit.name}</span>
                       {habit.description && (
                         <span className="text-xs text-slate-300">{habit.description}</span>
                       )}
-                      {habit.category && (
-                        <span className="mt-1 inline-flex w-fit rounded-full border border-white/15 bg-white/10 px-2 py-0.5 text-[11px] font-semibold text-slate-100">
-                          {habit.category}
+                      {habit.categories?.length > 0 && (
+                        <span className="mt-1 inline-flex w-fit flex-wrap gap-2">
+                          {habit.categories.map((cat) => (
+                            <span
+                              key={cat}
+                              className="inline-flex rounded-full border border-white/15 bg-white/10 px-2 py-0.5 text-[11px] font-semibold text-slate-100"
+                            >
+                              {cat}
+                            </span>
+                          ))}
                         </span>
                       )}
                     </div>
-                    <span
-                      className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
-                        done
-                          ? "border border-emerald-300/40 bg-emerald-500/15 text-emerald-100"
-                          : "border border-slate-400/40 bg-slate-500/15 text-slate-100"
-                      }`}
-                    >
-                      {done ? "Completed" : "Not done"}
-                    </span>
+                    <div className="flex items-center gap-3">
+                      <span
+                        className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                          done
+                            ? "border border-emerald-300/40 bg-emerald-500/15 text-emerald-100"
+                            : "border border-slate-400/40 bg-slate-500/15 text-slate-100"
+                        }`}
+                      >
+                        {done ? "Completed" : "Not done"}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => toggleHabitOnDate(habit.id, selectedDate)}
+                        className={`min-w-[87px] rounded-md px-3 py-1.5 text-xs font-semibold transition ${
+                          done
+                            ? "border border-slate-300/30 bg-white/10 text-slate-100 hover:bg-white/15"
+                            : "bg-emerald-500 text-slate-900 hover:bg-emerald-400"
+                        }`}
+                      >
+                        {done ? "Unmark" : "Mark done"}
+                      </button>
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -1424,103 +2056,290 @@ export default function Dashboard() {
       )}
 
       {manageCategoriesOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 px-4"
-          onClick={() => setManageCategoriesOpen(false)}
-        >
+        <>
           <div
-            className="w-full max-w-lg rounded-2xl border border-white/10 bg-slate-900 p-5 shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 px-4 py-6 overscroll-contain overflow-y-auto [&::-webkit-scrollbar]:hidden"
+            style={{ scrollbarWidth: "none" }}
+            onClick={() => setManageCategoriesOpen(false)}
           >
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <p className="text-xs uppercase tracking-wide text-slate-400">Categories</p>
-                <h3 className="text-xl font-semibold text-white">Edit colors</h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setManageCategoriesOpen(false)}
-                className="rounded-full bg-white/10 px-3 py-1 text-xs font-semibold text-slate-100 hover:bg-white/20"
-              >
-                Close
-              </button>
-            </div>
+            <div
+              className="w-full max-w-lg rounded-2xl border border-white/10 bg-slate-900 p-5 shadow-2xl max-h-[85vh] overflow-y-auto [&::-webkit-scrollbar]:hidden"
+              style={{ scrollbarWidth: "none" }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex flex-col gap-4">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-slate-400">Tags</p>
+                    <h3 className="text-xl font-semibold text-white">Manage tags</h3>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setManageCategoriesOpen(false)}
+                    className="rounded-full bg-white/10 px-3 py-1 text-xs font-semibold text-slate-100 hover:bg-white/20"
+                  >
+                    Close
+                  </button>
+                </div>
 
-            {categoryOptions.length === 0 ? (
-              <p className="mt-4 text-sm text-slate-300">No categories yet.</p>
-            ) : (
-              <div className="mt-4 space-y-3">
-                {categoryOptions.map((cat) => {
-                  const color = getCategoryColor(cat);
-                  return (
-                    <div
-                      key={cat}
-                      className="flex items-center justify-between rounded-3xl border border-white/10 bg-slate-900/60 px-4 py-4 shadow-lg shadow-slate-950/40"
+                <div className="flex flex-col gap-3">
+                  <div className="rounded-2xl border border-white/10 bg-white/5 p-4 shadow-inner shadow-black/20">
+                    <form
+                      className="flex flex-col gap-2"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        createTag(tagManagerNew);
+                        setTagManagerNew("");
+                      }}
                     >
-                      <div className="flex items-center gap-3">
-                        <span
-                          className="h-10 w-10 rounded-2xl border border-white/15 shadow-inner shadow-black/30"
-                          style={{ backgroundColor: color }}
-                          aria-hidden
-                        />
-                        <div className="flex flex-col leading-tight">
-                          <span className="text-sm font-semibold text-slate-100">{cat}</span>
-                          <span className="text-[11px] text-slate-400">Brand this category</span>
-                        </div>
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 pl-1">
+                          Create
+                        </p>
+                        {tagManagerNew && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setTagManagerNew("");
+                              setTagManagerError(null);
+                            }}
+                            className="inline-flex items-center rounded-md border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold text-slate-100 transition hover:bg-white/10"
+                          >
+                            Clear
+                          </button>
+                        )}
                       </div>
-                      <div className="flex items-center gap-2">
-                        <label className="relative inline-flex items-center">
-                          <input
-                            type="color"
-                            aria-label={`Color for ${cat}`}
-                            value={color}
-                            onChange={(e) =>
-                              setCategoryColors((prev) => {
-                                const next = { ...prev, [cat]: e.target.value };
-                                try {
-                                  localStorage.setItem("habit-category-colors", JSON.stringify(next));
-                                } catch {
-                                  // ignore
-                                }
-                                return next;
-                              })
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                        <input
+                          type="text"
+                          value={tagManagerNew}
+                          onChange={(e) => {
+                            setTagManagerNew(e.target.value);
+                            setTagManagerError(null);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              createTag(tagManagerNew);
+                              setTagManagerNew("");
                             }
-                            className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-                          />
-                          <span className="rounded-2xl border border-white/15 bg-white/10 px-3 py-2 text-[11px] font-semibold text-white shadow-sm shadow-slate-900/40 transition hover:-translate-y-0.5 hover:bg-white/15">
-                            Pick color
-                          </span>
-                        </label>
+                          }}
+                          placeholder="Create new tag"
+                          className="flex-1 rounded-lg border border-white/12 bg-white/5 p-3 text-sm text-white placeholder:text-slate-400 transition focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
+                        />
                         <button
-                          type="button"
-                          onClick={() =>
-                            setCategoryColors((prev) => {
-                              const next = { ...prev };
-                              delete next[cat];
-                              try {
-                                localStorage.setItem("habit-category-colors", JSON.stringify(next));
-                              } catch {
-                                // ignore
-                              }
-                              return next;
-                            })
-                          }
-                          className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-[11px] font-semibold text-slate-200 transition hover:-translate-y-0.5 hover:bg-white/10"
+                          type="submit"
+                          disabled={!tagManagerNew.trim()}
+                          className="inline-flex h-10 min-w-24 items-center justify-center rounded-lg bg-emerald-500 px-3 text-sm font-semibold text-slate-900 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
                         >
-                          Reset
+                          Create tag
                         </button>
                       </div>
+                    </form>
+                  </div>
+
+                  <div className="rounded-2xl border border-white/10 bg-white/5 p-4 shadow-inner shadow-black/20">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 pl-1">
+                        Search
+                      </p>
+                      {tagManagerSearch && (
+                        <button
+                          type="button"
+                          onClick={() => setTagManagerSearch("")}
+                          className="inline-flex items-center rounded-md border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold text-slate-100 transition hover:bg-white/10"
+                        >
+                          Clear search
+                        </button>
+                      )}
                     </div>
-                  );
-                })}
+                    <div className="mt-2">
+                      <input
+                        type="text"
+                        value={tagManagerSearch}
+                        onChange={(e) => {
+                          setTagManagerSearch(e.target.value);
+                          setTagManagerError(null);
+                        }}
+                        placeholder="Search tags"
+                        className="w-full rounded-lg border border-white/12 bg-white/5 p-3 text-sm text-white placeholder:text-slate-400 transition focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
+                      />
+                    </div>
+                  </div>
+
+                  {tagManagerError && (
+                    <p className="text-sm text-red-300">{tagManagerError}</p>
+                  )}
+                </div>
+
+                {filteredManagerTags.length === 0 ? (
+                  <p className="text-sm text-slate-300">No tags found.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {filteredManagerTags.map((cat) => {
+                      const color = getCategoryColor(cat);
+                      const isEditing = tagManagerEditing === cat;
+                      const usageCount = tagUsageCount[cat] || 0;
+                      return (
+                        <div
+                          key={cat}
+                          className="flex flex-col gap-3 rounded-2xl border border-white/12 bg-white/5 p-4 shadow-lg shadow-slate-950/30 sm:flex-row sm:items-center sm:justify-between"
+                        >
+                          <div className="flex items-center gap-3">
+                            <span
+                              className="h-12 w-12 rounded-2xl border border-white/15 shadow-inner shadow-black/30"
+                              style={{ backgroundColor: color }}
+                              aria-hidden
+                            />
+                            <div className="flex flex-col leading-tight">
+                              {isEditing ? (
+                                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                                  <input
+                                    value={tagManagerEditingValue}
+                                    onChange={(e) => setTagManagerEditingValue(e.target.value)}
+                                    className="rounded-lg border border-white/10 bg-white/10 p-2 text-sm text-white placeholder:text-slate-400 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
+                                    placeholder="New tag name"
+                                  />
+                                  <div className="flex gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => renameTag(cat, tagManagerEditingValue)}
+                                      className="rounded-md bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-slate-900 transition hover:bg-emerald-400"
+                                    >
+                                      Save
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setTagManagerEditing(null);
+                                        setTagManagerEditingValue("");
+                                        setTagManagerError(null);
+                                      }}
+                                      className="rounded-md bg-white/10 px-3 py-1 text-xs font-semibold text-slate-100 transition hover:bg-white/15"
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <>
+                                  <span className="text-sm font-semibold text-slate-100">{cat}</span>
+                                  <span className="text-[11px] text-slate-400 whitespace-nowrap">
+                                    {usageCount > 0
+                                      ? `${usageCount} habit${usageCount === 1 ? "" : "s"} using this tag`
+                                      : "Not used yet"}
+                                  </span>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setColorMenuOpen(cat);
+                                setColorMenuTarget(cat);
+                              }}
+                              className="rounded-full border border-white/15 bg-white/10 px-3.5 py-1.5 text-[11px] font-semibold text-white shadow-sm shadow-slate-900/40 transition hover:-translate-y-0.5 hover:bg-white/15"
+                            >
+                              Pick color
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setCategoryColors((prev) => {
+                                  const next = { ...prev };
+                                  delete next[cat];
+                                  try {
+                                    localStorage.setItem("habit-category-colors", JSON.stringify(next));
+                                  } catch {
+                                    // ignore
+                                  }
+                                  return next;
+                                })
+                              }
+                              className="rounded-full border border-white/12 bg-white/5 px-3.5 py-1.5 text-[11px] font-semibold text-slate-200 shadow-sm transition hover:-translate-y-0.5 hover:bg-white/10"
+                            >
+                              Reset
+                            </button>
+                            {!isEditing && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setTagManagerEditing(cat);
+                                  setTagManagerEditingValue(cat);
+                                }}
+                                className="rounded-full border border-white/12 bg-white/5 px-3.5 py-1.5 text-[11px] font-semibold text-slate-200 shadow-sm transition hover:-translate-y-0.5 hover:bg-white/10"
+                              >
+                                Rename
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => removeTag(cat)}
+                              className="rounded-full border border-red-400/30 bg-red-500/10 px-3.5 py-1.5 text-[11px] font-semibold text-red-200 shadow-sm transition hover:-translate-y-0.5 hover:bg-red-500/20"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-            )}
+            </div>
           </div>
-        </div>
+          {colorMenuOpen && colorMenuTarget && (
+            <div className="fixed inset-0 z-60 flex items-center justify-center bg-slate-900/70 px-4 py-6 backdrop-blur-sm">
+              <div className="w-full max-w-md rounded-2xl border border-white/10 bg-slate-900 p-4 shadow-2xl shadow-slate-950/50">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-slate-400">Color</p>
+                    <h4 className="text-lg font-semibold text-white">Choose a color</h4>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setColorMenuOpen(null)}
+                    className="rounded-full bg-white/10 px-3 py-1 text-xs font-semibold text-slate-100 hover:bg-white/20"
+                  >
+                    Close
+                  </button>
+                </div>
+                <div className="mt-4 grid grid-cols-5 gap-3">
+                  {palette.map((choice) => {
+                    const current = categoryColors[colorMenuTarget] || "";
+                    const isActive = choice.toLowerCase() === current.toLowerCase();
+                    return (
+                      <button
+                        key={choice}
+                        type="button"
+                        aria-label={`Choose ${choice}`}
+                        onClick={() => {
+                          setCategoryColors((prev) => {
+                            const next = { ...prev, [colorMenuTarget]: choice };
+                            try {
+                              localStorage.setItem("habit-category-colors", JSON.stringify(next));
+                            } catch {
+                              // ignore
+                            }
+                            return next;
+                          });
+                          setColorMenuOpen(null);
+                        }}
+                        className={`h-12 w-12 rounded-xl border ${
+                          isActive ? "border-white" : "border-white/20"
+                        } shadow-inner shadow-black/30 transition hover:scale-105 focus:outline-none focus:ring-2 focus:ring-white/40`}
+                        style={{ backgroundColor: choice }}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
 }
-
-
-
