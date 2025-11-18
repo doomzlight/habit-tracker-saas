@@ -289,7 +289,6 @@ export default function Dashboard() {
     const end = new Date(Date.UTC(viewYear, viewMonth + 1, 0));
     const formatter = new Intl.DateTimeFormat("en-US", {
       month: "long",
-      year: "numeric",
       timeZone: "UTC",
     });
 
@@ -1596,9 +1595,6 @@ export default function Dashboard() {
                 <p className="text-xs uppercase tracking-wide text-slate-400">Create a habit</p>
                 <h2 className="text-xl font-semibold text-white">Add a new routine</h2>
               </div>
-              <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-300">
-                Consistency is king
-              </span>
             </div>
             <form onSubmit={addHabit} className="space-y-3">
               <input
