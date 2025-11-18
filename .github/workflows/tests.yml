@@ -15,12 +15,16 @@ jobs:
       PLAYWRIGHT_USER_EMAIL: ${{ secrets.PLAYWRIGHT_USER_EMAIL }}
       PLAYWRIGHT_USER_PASSWORD: ${{ secrets.PLAYWRIGHT_USER_PASSWORD }}
 
+    defaults:
+      run:
+        working-directory: ./habit-tracker   # <<< IMPORTANT FIX
+
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4   # UPDATED
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4  # UPDATED
+        uses: actions/setup-node@v4
         with:
           node-version: 18
 
@@ -35,7 +39,7 @@ jobs:
 
       - name: Upload HTML report
         if: always()
-        uses: actions/upload-artifact@v4   # UPDATED
+        uses: actions/upload-artifact@v4
         with:
           name: playwright-report
-          path: playwright-report
+          path: habit-tracker/playwright-report   # <<< FIXED PATH
