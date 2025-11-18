@@ -1,16 +1,14 @@
 import { test, expect } from "@playwright/test";
+import { login } from "../utils/auth";
 
 test("user can create a habit", async ({ page }) => {
-  await page.goto("/login");
-  await page.getByPlaceholder("Email").fill(process.env.PLAYWRIGHT_USER_EMAIL!);
-  await page.getByPlaceholder("Password").fill(process.env.PLAYWRIGHT_USER_PASSWORD!);
-  await page.getByRole("button", { name: /login/i }).click();
+  await login(page);
+  await expect(page.getByText(/create a habit/i)).toBeVisible();
 
-  await page.waitForURL(/dashboard/);
+  const habitName = `Habit ${Date.now()}`;
 
-  await page.getByRole("button", { name: /new habit/i }).click();
-  await page.getByPlaceholder("Habit name").fill("Drink Water");
-  await page.getByRole("button", { name: /save/i }).click();
+  await page.getByPlaceholder("Habit name").fill(habitName);
+  await page.getByRole("button", { name: /add habit/i }).click();
 
-  await expect(page.getByText("Drink Water")).toBeVisible();
+  await expect(page.getByRole("heading", { name: habitName })).toBeVisible();
 });

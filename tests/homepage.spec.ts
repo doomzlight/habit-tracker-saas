@@ -1,27 +1,29 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 
-test("homepage loads", async ({ page }) => {
-  await page.goto("https://YOUR-VERCEL-URL.vercel.app");
-  await expect(page).toHaveTitle(/Habit/i);
+const expectLoginPage = async (page: Page) => {
+  await page.goto("/");
+  await page.waitForURL(/login/);
+  await expect(page.getByRole("heading", { name: /sign in to habit tracker/i })).toBeVisible();
+};
+
+test("homepage redirects to login when logged out", async ({ page }) => {
+  await expectLoginPage(page);
 });
-
 
 test("login button visible", async ({ page }) => {
-  await page.goto("https://YOUR-VERCEL-URL.vercel.app");
-  await expect(page.getByRole("button", { name: /login/i })).toBeVisible();
+  await expectLoginPage(page);
+  await expect(page.getByRole("button", { name: /sign in/i })).toBeVisible();
 });
-
 
 test("navigate to login page", async ({ page }) => {
-  await page.goto("https://YOUR-VERCEL-URL.vercel.app");
-
-  await page.getByRole("button", { name: /login/i }).click();
-  await expect(page).toHaveURL(/login/);
+  await expectLoginPage(page);
+  await page.getByRole("button", { name: /sign up/i }).click();
+  await expect(page.getByRole("heading", { name: /create account/i })).toBeVisible();
+  await page.getByRole("button", { name: /sign in/i }).click();
+  await expect(page.getByRole("heading", { name: /sign in to habit tracker/i })).toBeVisible();
 });
 
-
-
-test("footer visible", async ({ page }) => {
-  await page.goto("https://YOUR-VERCEL-URL.vercel.app");
-  await expect(page.getByText("©")).toBeVisible();
+test("auth toggle visible", async ({ page }) => {
+  await expectLoginPage(page);
+  await expect(page.getByRole("button", { name: /sign up/i })).toBeVisible();
 });

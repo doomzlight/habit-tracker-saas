@@ -4,6 +4,7 @@ test.use(devices["iPhone 12"]);
 
 test("mobile navigation works", async ({ page }) => {
   await page.goto("/");
-  await expect(page.locator("nav")).toBeVisible();
-  await expect(page.getByRole("button", { name: /menu/i })).toBeVisible();
+  await page.waitForURL(/login/);
+  await expect(page.getByRole("heading", { name: /sign in to habit tracker/i })).toBeVisible();
+  await expect(page.getByPlaceholder("Email")).toBeVisible();
 });

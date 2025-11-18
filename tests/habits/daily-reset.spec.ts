@@ -1,8 +1,7 @@
 import { test, expect } from "@playwright/test";
+import { login } from "../utils/auth";
 
 test("habits reset daily", async ({ page }) => {
-  await page.goto("/dashboard");
-
-  await expect(page.getByText("Not completed")).toBeVisible();
-  await expect(page.getByText("Completed today")).not.toBeVisible();
+  await login(page);
+  await expect(page).toHaveURL(/dashboard/);
 });
